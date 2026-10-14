@@ -295,7 +295,8 @@ export default function Admin() {
       "ぷかぷか〜♪ 水温もシステムも快調だよ！",
       "深海アクアリウム、快適だな〜✨",
       "エネルギー充填完了！いつでも学習OK！",
-      "ふわふわ〜♪ 次のコードを教えて！"
+      "ふわふわ〜♪ 次のコードを教えて！",
+      "よう、南出"
     ];
     const timer = setInterval(() => {
       if (!isReacting) {
