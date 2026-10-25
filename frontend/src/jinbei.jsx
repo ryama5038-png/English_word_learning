@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { authApi, petApi } from './api';
+import { WordDictionaryModal, QuizModal, SystemConfigModal } from './VocabModals';
 
 // --- Cyber & Aquarium Glowing Icons ---
 const EnergyHeartIcon = () => (
-  <div className="relative w-8 h-8 flex items-center justify-center">
+  <div className="relative w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center shrink-0">
     <div className="absolute inset-0 bg-[#00f2fe]/40 rounded-full blur-md"></div>
-    <svg className="relative w-7 h-7 drop-shadow-[0_0_8px_#00f2fe]" viewBox="0 0 24 24" fill="#00f2fe">
+    <svg className="relative w-5 h-5 sm:w-7 sm:h-7 drop-shadow-[0_0_8px_#00f2fe]" viewBox="0 0 24 24" fill="#00f2fe">
       <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
       <path d="M12 7l-2 5h3l-1.5 5 4.5-6h-3l2-4h-3z" fill="#0b132b" />
     </svg>
@@ -12,14 +14,14 @@ const EnergyHeartIcon = () => (
 );
 
 const CreditHexIcon = () => (
-  <svg className="w-6 h-6 text-[#ff007f] drop-shadow-[0_0_8px_#ff007f]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-[#ff007f] drop-shadow-[0_0_8px_#ff007f] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M12 2L3 7v10l9 5 9-5V7l-9-5z" fill="#ff007f" fillOpacity="0.15" />
     <path d="M12 6v12M8 10h8" strokeLinecap="round" stroke="#ff80bf" />
   </svg>
 );
 
 const BatteryChargeIcon = () => (
-  <svg className="w-7 h-7 text-[#00f2fe] drop-shadow-[0_0_8px_#00f2fe]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg className="w-5 h-5 sm:w-7 sm:h-7 text-[#00f2fe] drop-shadow-[0_0_8px_#00f2fe] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="2" y="6" width="16" height="12" rx="2" />
     <path d="M20 10v4" />
     <path d="M10 9l-2 3h4l-2 3" fill="currentColor" stroke="none" />
@@ -27,7 +29,7 @@ const BatteryChargeIcon = () => (
 );
 
 const OptimizeDiskIcon = () => (
-  <svg className="w-7 h-7 text-[#ff007f] drop-shadow-[0_0_8px_#ff007f]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg className="w-5 h-5 sm:w-7 sm:h-7 text-[#ff007f] drop-shadow-[0_0_8px_#ff007f] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="9" />
     <circle cx="12" cy="12" r="3" fill="#ff007f" fillOpacity="0.4" />
     <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
@@ -37,7 +39,7 @@ const OptimizeDiskIcon = () => (
 // --- ホログラムジンベイザメ本体 (水泳アニメーション・斑点・表情リアクション) ---
 const HoloWhaleSharkSprite = ({ isReacting }) => {
   return (
-    <div className="relative w-80 h-64 sm:w-96 sm:h-72 flex items-center justify-center select-none pointer-events-none">
+    <div className="relative w-60 h-48 sm:w-80 sm:h-64 md:w-96 md:h-72 flex items-center justify-center select-none pointer-events-none">
       <svg viewBox="0 0 360 260" className="w-full h-full overflow-visible">
         <defs>
           {/* ジンベイザメ本体の半透明ホログラムグラデーション */}
@@ -377,6 +379,7 @@ const SharkAquariumStyles = () => (
 );
 
 export default function Jinbei() {
+  const [user, setUser] = useState(null);
   const [energy, setEnergy] = useState(95);
   const [credits, setCredits] = useState(230);
   const [isReacting, setIsReacting] = useState(false);
@@ -384,23 +387,47 @@ export default function Jinbei() {
   const [showSpeech, setShowSpeech] = useState(true);
   const [particles, setParticles] = useState([]);
   const [modalOpen, setModalOpen] = useState(null);
+  const lastWordIdRef = useRef(null);
 
-  // 定期的な独り言（ジンベイザメのキャラクター性）
+  // 初回マウント時：バックエンドからユーザー状態＆エネルギー減衰を取得
   useEffect(() => {
-    const idleTalks = [
-      "マスター、おかえりなさい！⚡",
-      "ぷかぷか〜♪ 水温もサイバーネットも快調！",
-      "ジンベイザメの模様、きれいでしょう？✨",
-      "エネルギー満タン！およぎまわるよ〜！",
-      "深海アクアリウム、とっても落ち着くなぁ🫧",
-      "もっともっと大きくなりたいな♪"
-    ];
-    const timer = setInterval(() => {
-      if (!isReacting) {
+    authApi
+      .getMe()
+      .then((u) => {
+        setUser(u);
+        setEnergy(u.energy);
+        setCredits(u.points);
+        if (u.decayed_amount > 0) {
+          setSpeech(
+            `ぷかぷか…放置中にエネルギーが -${u.decayed_amount}% 減っちゃったよ…🫧`
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // 定期的な無意識復習（直近検索した最大20語の品詞別意味＋エネルギー残量に応じた口調変化）
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      if (isReacting) return;
+      try {
+        const data = await petApi.getIdleTalk(lastWordIdRef.current);
+        if (data && data.speech) {
+          setSpeech(data.speech);
+          setEnergy(data.energy);
+          if (data.word_id) lastWordIdRef.current = data.word_id;
+          setShowSpeech(true);
+        }
+      } catch {
+        const idleTalks = [
+          "マスター、おかえりなさい！⚡",
+          "ぷかぷか〜♪ 水温もサイバーネットも快調！",
+          "ジンベイザメの模様、きれいでしょう？✨",
+        ];
         setSpeech(idleTalks[Math.floor(Math.random() * idleTalks.length)]);
         setShowSpeech(true);
       }
-    }, 8500);
+    }, 7500);
     return () => clearInterval(timer);
   }, [isReacting]);
 
@@ -417,24 +444,29 @@ export default function Jinbei() {
     setTimeout(() => setParticles([]), 1200);
   };
 
-  // ★ ジンベイザメタップ時のランダムリアクション
-  const handlePetClick = (e) => {
+  // ★ ジンベイザメタップ時のランダムリアクション＋直近検索単語の復習
+  const handlePetClick = async (e) => {
     e.stopPropagation();
     if (isReacting) return;
 
-    const reactionQuotes = [
-      "きゅ〜ん！マスターだいすきっ！♡",
-      "ぷかぷか〜！くすぐったいよ⚡",
-      "ヒレをパタパタ！パワーMAXだよ！✨",
-      "なでなで検知！幸福度上昇中♪🫧",
-      "大きなジンベイザメになれるよう頑張るね！⭐",
-      "えへへっ、もっと撫でて〜！ピポパ…♡"
-    ];
-
-    setSpeech(reactionQuotes[Math.floor(Math.random() * reactionQuotes.length)]);
-    setShowSpeech(true);
     setIsReacting(true);
     triggerParticles();
+
+    try {
+      const data = await petApi.getIdleTalk(lastWordIdRef.current);
+      if (data && data.speech) {
+        setSpeech(`ぷかぷか〜🫧 ${data.speech}`);
+        if (data.word_id) lastWordIdRef.current = data.word_id;
+      }
+    } catch {
+      const reactionQuotes = [
+        "きゅ〜ん！マスターだいすきっ！♡",
+        "ぷかぷか〜！くすぐったいよ⚡",
+        "ヒレをパタパタ！パワーMAXだよ！✨",
+      ];
+      setSpeech(reactionQuotes[Math.floor(Math.random() * reactionQuotes.length)]);
+    }
+    setShowSpeech(true);
 
     setTimeout(() => {
       setIsReacting(false);
@@ -442,42 +474,56 @@ export default function Jinbei() {
   };
 
   // CHARGE (プランクトン給餌・充電)
-  const handleCharge = () => {
-    if (credits < 20) {
-      setSpeech("クレジットが足りないよ…学習して稼ごう！");
+  const handleCharge = async () => {
+    try {
+      const res = await petApi.performAction('charge');
+      setCredits(res.points);
+      setEnergy(res.energy);
+      setSpeech(res.speech);
       setShowSpeech(true);
-      return;
+      setIsReacting(true);
+      triggerParticles();
+      setTimeout(() => setIsReacting(false), 850);
+    } catch (err) {
+      setSpeech(err.response?.data?.detail || "クレジットが足りないよ…学習して稼ごう！");
+      setShowSpeech(true);
     }
-    setCredits((c) => c - 20);
-    setEnergy((e) => Math.min(100, e + 10));
-    setSpeech("プランクトンエネルギー充填完了！チャージ感謝⚡");
-    setShowSpeech(true);
-    setIsReacting(true);
-    triggerParticles();
-    setTimeout(() => setIsReacting(false), 850);
   };
 
   // OPTIMIZE (遊泳・最適化)
-  const handleOptimize = () => {
-    if (credits < 15) {
-      setSpeech("クレジットが足りないよ…学習して稼ごう！");
+  const handleOptimize = async () => {
+    try {
+      const res = await petApi.performAction('optimize');
+      setCredits(res.points);
+      setEnergy(res.energy);
+      setSpeech(res.speech);
       setShowSpeech(true);
-      return;
+      setIsReacting(true);
+      triggerParticles();
+      setTimeout(() => setIsReacting(false), 850);
+    } catch (err) {
+      setSpeech(err.response?.data?.detail || "クレジットが足りないよ…学習して稼ごう！");
+      setShowSpeech(true);
     }
-    setCredits((c) => c - 15);
-    setEnergy((e) => Math.min(100, e + 5));
-    setSpeech("システム最適化完了！スイスイ泳げるよ♪✨");
-    setShowSpeech(true);
-    setIsReacting(true);
-    triggerParticles();
-    setTimeout(() => setIsReacting(false), 850);
   };
 
-  // 学習クリア時のクレジット付与
-  const handleEarnCredits = (amount) => {
-    setCredits((c) => c + amount);
-    setModalOpen(null);
-    setSpeech(`問題クリア！ +${amount} CR 獲得したよ！🎉`);
+  const handleWordSearched = (word) => {
+    lastWordIdRef.current = word.id;
+    const pos = [
+      word.noun_meaning ? `【名】${word.noun_meaning}` : null,
+      word.verb_meaning ? `【動】${word.verb_meaning}` : null,
+      word.adj_meaning ? `【形】${word.adj_meaning}` : null,
+      word.adv_meaning ? `【副】${word.adv_meaning}` : null,
+    ]
+      .filter(Boolean)
+      .join(' / ');
+    setSpeech(`「${word.word_spell}」(${pos}) を覚えたよ！一緒に復習しようね🦈`);
+    setShowSpeech(true);
+  };
+
+  const handleQuizComplete = (res) => {
+    setCredits(res.total_points);
+    setSpeech(res.speech);
     setShowSpeech(true);
     setIsReacting(true);
     triggerParticles();
@@ -485,7 +531,7 @@ export default function Jinbei() {
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#09071c] font-sans select-none text-slate-100 flex flex-col justify-between">
+    <div className="relative w-full h-[100dvh] md:w-screen md:h-screen overflow-hidden bg-[#09071c] font-sans select-none text-slate-100 flex flex-col justify-between">
       <SharkAquariumStyles />
 
       {/* ========================================================= */}
@@ -503,7 +549,7 @@ export default function Jinbei() {
         <div className="absolute right-[14%] w-4 h-4 rounded-full border border-cyan-300/60 bg-cyan-400/20 bubble-5"></div>
 
         {/* 左側：深海水草＆発光サンゴのネオンシルエット */}
-        <div className="absolute bottom-[20%] left-6 sm:left-14 w-44 h-48 opacity-45">
+        <div className="absolute bottom-[20%] left-2 sm:left-14 w-28 sm:w-44 h-32 sm:h-48 opacity-25 sm:opacity-45">
           <svg className="w-full h-full" viewBox="0 0 160 160" fill="none">
             <path d="M20 160 Q 30 110 15 70 T 35 10" stroke="#00f2fe" strokeWidth="6" strokeLinecap="round" opacity="0.6" />
             <path d="M40 160 Q 55 120 45 80 T 60 30" stroke="#00b4d8" strokeWidth="5" strokeLinecap="round" opacity="0.5" />
@@ -512,13 +558,13 @@ export default function Jinbei() {
         </div>
 
         {/* 右側：深海ネオンパイプ＆発光バイオノード */}
-        <div className="absolute top-0 right-4 sm:right-16 w-36 h-80 opacity-55">
+        <div className="absolute top-0 right-2 sm:right-16 w-24 sm:w-36 h-60 sm:h-80 opacity-35 sm:opacity-55">
           <svg className="w-full h-full" viewBox="0 0 140 320" fill="none">
             <path d="M120 0 V140 C120 170, 95 190, 65 190 H0" stroke="#00f2fe" strokeWidth="8" strokeOpacity="0.4" />
             <path d="M135 0 V130 C135 175, 100 205, 55 205 H0" stroke="#ff007f" strokeWidth="6" strokeOpacity="0.35" />
           </svg>
         </div>
-        <div className="absolute bottom-[22%] right-10 w-24 h-24 opacity-40">
+        <div className="absolute bottom-[22%] right-2 sm:right-10 w-16 sm:w-24 h-16 sm:h-24 opacity-25 sm:opacity-40">
           <svg className="w-full h-full" viewBox="0 0 100 100" fill="none">
             <path d="M20 100 Q 30 70 20 40" stroke="#ff007f" strokeWidth="4" strokeLinecap="round" />
             <circle cx="20" cy="38" r="3" fill="#ff007f" className="animate-ping" />
@@ -546,20 +592,20 @@ export default function Jinbei() {
       {/* ========================================================= */}
       {/* 2. 前面ヘッダーUI（ENERGY・CREDITS・学習ボタン）           */}
       {/* ========================================================= */}
-      <header className="relative z-30 p-4 sm:p-7 flex items-start justify-between w-full pointer-events-none">
+      <header className="relative z-30 p-3 sm:p-5 md:p-7 flex items-start justify-between w-full pointer-events-none">
         {/* 左上ステータス */}
-        <div className="flex flex-col space-y-3 pointer-events-auto">
+        <div className="flex flex-col space-y-2 sm:space-y-3 pointer-events-auto">
           {/* ENERGY カード */}
-          <div className="glass-card border border-[#00f2fe]/60 rounded-2xl px-4 py-3 shadow-[0_0_20px_rgba(0,242,254,0.25)] flex flex-col w-64 sm:w-72">
-            <div className="flex items-center justify-between text-xs sm:text-sm font-black text-cyan-300 tracking-wider mb-2 font-mono">
-              <div className="flex items-center gap-2">
+          <div className="glass-card border border-[#00f2fe]/60 rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 shadow-[0_0_20px_rgba(0,242,254,0.25)] flex flex-col w-44 sm:w-64 md:w-72">
+            <div className="flex items-center justify-between text-[11px] sm:text-xs md:text-sm font-black text-cyan-300 tracking-wider mb-1 sm:mb-2 font-mono">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <EnergyHeartIcon />
                 <span>ENERGY</span>
               </div>
-              <span className="text-[#00f2fe] drop-shadow-[0_0_8px_#00f2fe] text-base">{energy}%</span>
+              <span className="text-[#00f2fe] drop-shadow-[0_0_8px_#00f2fe] text-xs sm:text-base">{energy}%</span>
             </div>
             {/* ネオンプログレスバー */}
-            <div className="w-full h-3.5 bg-[#09071c] rounded-full overflow-hidden border border-[#00f2fe]/40 p-0.5">
+            <div className="w-full h-2.5 sm:h-3.5 bg-[#09071c] rounded-full overflow-hidden border border-[#00f2fe]/40 p-0.5">
               <div
                 className="h-full rounded-full transition-all duration-700 bg-gradient-to-r from-[#00b4d8] to-[#00f2fe] shadow-[0_0_12px_#00f2fe]"
                 style={{ width: `${energy}%` }}
@@ -568,36 +614,48 @@ export default function Jinbei() {
           </div>
 
           {/* CREDITS カード */}
-          <div className="glass-card border border-[#ff007f]/60 rounded-2xl px-4 py-2.5 shadow-[0_0_20px_rgba(255,0,127,0.25)] flex items-center justify-between w-48 sm:w-56 font-mono">
-            <div className="flex items-center gap-2.5">
+          <div className="glass-card border border-[#ff007f]/60 rounded-xl sm:rounded-2xl px-3 py-1.5 sm:px-4 sm:py-2.5 shadow-[0_0_20px_rgba(255,0,127,0.25)] flex items-center justify-between w-36 sm:w-48 md:w-56 font-mono">
+            <div className="flex items-center gap-1.5 sm:gap-2.5">
               <CreditHexIcon />
-              <span className="text-xs sm:text-sm font-bold text-pink-300 tracking-wider">CREDITS</span>
+              <span className="text-[10px] sm:text-xs md:text-sm font-bold text-pink-300 tracking-wider">CREDITS</span>
             </div>
-            <span className="text-lg sm:text-xl font-black text-[#ff80bf] drop-shadow-[0_0_8px_#ff007f]">
+            <span className="text-sm sm:text-lg md:text-xl font-black text-[#ff80bf] drop-shadow-[0_0_8px_#ff007f]">
               {credits}
             </span>
           </div>
         </div>
 
-        {/* 右上メニュー＆学習ボタン */}
-        <div className="flex items-center space-x-3 pointer-events-auto">
+        {/* 右上メニュー：単語検索・マイ単語帳 ＆ 単語テスト ＆ 設定ボタン */}
+        <div className="flex items-center space-x-1.5 sm:space-x-3 pointer-events-auto">
+          {/* > Vocab_Dict() (単語検索＆マイ単語帳) ボタン */}
+          <button
+            onClick={() => setModalOpen('dict')}
+            className="group relative px-2.5 sm:px-4 md:px-5 py-2 sm:py-2.5 md:py-3 glass-card hover:bg-cyan-950/40 border-2 border-[#00f2fe] rounded-xl sm:rounded-2xl shadow-[0_0_16px_rgba(0,242,254,0.3)] active:scale-95 transition-all flex items-center gap-1 sm:gap-2"
+          >
+            <span className="text-[11px] sm:text-xs md:text-sm font-mono font-black text-[#00f2fe] tracking-wider group-hover:drop-shadow-[0_0_8px_#00f2fe]">
+              <span className="hidden sm:inline">&gt; Vocab_Dict()</span>
+              <span className="sm:hidden">🔍辞書</span>
+            </span>
+          </button>
+
           {/* > Execute_Learn() ボタン */}
           <button
             onClick={() => setModalOpen('study')}
-            className="group relative px-5 sm:px-6 py-2.5 sm:py-3 glass-card hover:bg-emerald-950/40 border-2 border-[#00ff88] rounded-2xl shadow-[0_0_18px_rgba(0,255,136,0.35)] active:scale-95 transition-all flex items-center gap-2"
+            className="group relative px-2.5 sm:px-5 md:px-6 py-2 sm:py-2.5 md:py-3 glass-card hover:bg-emerald-950/40 border-2 border-[#00ff88] rounded-xl sm:rounded-2xl shadow-[0_0_18px_rgba(0,255,136,0.35)] active:scale-95 transition-all flex items-center gap-1 sm:gap-2"
           >
-            <span className="text-xs sm:text-sm font-mono font-black text-[#00ff88] tracking-wider group-hover:drop-shadow-[0_0_8px_#00ff88]">
-              &gt; Execute_Learn()
+            <span className="text-[11px] sm:text-xs md:text-sm font-mono font-black text-[#00ff88] tracking-wider group-hover:drop-shadow-[0_0_8px_#00ff88]">
+              <span className="hidden sm:inline">&gt; Execute_Learn()</span>
+              <span className="sm:hidden">&gt; Learn()</span>
             </span>
           </button>
 
           {/* 設定ボタン */}
           <button
             onClick={() => setModalOpen('settings')}
-            className="p-3 glass-card hover:bg-cyan-950/40 border border-cyan-500/50 hover:border-cyan-400 rounded-2xl shadow-[0_0_12px_rgba(0,242,254,0.2)] active:scale-90 transition-all text-cyan-300"
+            className="p-2 sm:p-2.5 md:p-3 glass-card hover:bg-cyan-950/40 border border-cyan-500/50 hover:border-cyan-400 rounded-xl sm:rounded-2xl shadow-[0_0_12px_rgba(0,242,254,0.2)] active:scale-90 transition-all text-cyan-300"
             title="設定"
           >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="4" y1="6" x2="20" y2="6" />
               <line x1="4" y1="12" x2="20" y2="12" />
               <line x1="4" y1="18" x2="20" y2="18" />
@@ -612,16 +670,16 @@ export default function Jinbei() {
       {/* ========================================================= */}
       {/* 3. 中央ステージ（台座・光線コーン・ジンベイザメ本体）        */}
       {/* ========================================================= */}
-      <main className="relative z-20 flex-1 flex flex-col items-center justify-center -mt-4">
+      <main className="relative z-20 flex-1 flex flex-col items-center justify-center -mt-2 sm:-mt-4 md:-mt-4">
         <div className="relative flex flex-col items-center">
           
           {/* デジタル吹き出し（セリフ表示） */}
           <div
-            className={`transition-all duration-300 transform mb-2 pointer-events-none ${
+            className={`transition-all duration-300 transform mb-2 pointer-events-none max-w-[85vw] sm:max-w-md ${
               showSpeech ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-3 scale-95'
             }`}
           >
-            <div className="relative glass-card border border-[#00f2fe] px-5 py-2.5 rounded-2xl shadow-[0_0_20px_rgba(0,242,254,0.4)] text-xs sm:text-sm font-bold text-cyan-100 font-mono tracking-wide">
+            <div className="relative glass-card border border-[#00f2fe] px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl shadow-[0_0_20px_rgba(0,242,254,0.4)] text-xs sm:text-sm font-bold text-cyan-100 font-mono tracking-wide text-center">
               <span className="text-[#ff007f] mr-1.5 font-black">&gt;</span>
               {speech}
               <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-x-6 border-x-transparent border-t-6 border-t-[#00f2fe]"></div>
@@ -643,7 +701,7 @@ export default function Jinbei() {
               {particles.map((p) => (
                 <div
                   key={p.id}
-                  className="absolute animate-ping text-xl sm:text-2xl drop-shadow-[0_0_8px_#00f2fe]"
+                  className="absolute animate-ping text-lg sm:text-2xl drop-shadow-[0_0_8px_#00f2fe]"
                   style={{ transform: `translate(${p.x}px, ${p.y}px)` }}
                 >
                   {p.symbol}
@@ -654,18 +712,18 @@ export default function Jinbei() {
 
           {/* 台座から上へ伸びるホログラム光コーン */}
           <div
-            className="absolute -bottom-6 w-48 sm:w-60 h-48 bg-gradient-to-t from-[#00f2fe]/45 via-[#00f2fe]/15 to-transparent blur-md pointer-events-none"
+            className="absolute -bottom-6 sm:-bottom-6 w-40 sm:w-48 md:w-60 h-36 sm:h-48 bg-gradient-to-t from-[#00f2fe]/45 via-[#00f2fe]/15 to-transparent blur-md pointer-events-none"
             style={{ clipPath: 'polygon(20% 100%, 80% 100%, 100% 0%, 0% 0%)' }}
           />
 
           {/* 円形ホログラム台座（2段ネオンリング） */}
-          <div className="relative -mt-10 sm:-mt-12 flex flex-col items-center pointer-events-none">
+          <div className="relative -mt-8 sm:-mt-10 md:-mt-12 flex flex-col items-center pointer-events-none">
             {/* 上段リング (シアン発光) */}
-            <div className="w-52 sm:w-64 h-14 rounded-[50%] border-3 border-[#00f2fe] bg-[#00f2fe]/25 shadow-[0_0_25px_#00f2fe] flex items-center justify-center">
-              <div className="w-40 sm:w-48 h-8 rounded-[50%] border border-cyan-200/60 border-dashed animate-[spin_8s_linear_infinite]"></div>
+            <div className="w-40 h-10 sm:w-52 sm:h-14 md:w-64 rounded-[50%] border-2 sm:border-3 border-[#00f2fe] bg-[#00f2fe]/25 shadow-[0_0_25px_#00f2fe] flex items-center justify-center">
+              <div className="w-32 h-6 sm:w-40 sm:h-8 md:w-48 rounded-[50%] border border-cyan-200/60 border-dashed animate-[spin_8s_linear_infinite]"></div>
             </div>
             {/* 下段リング (マゼンタ発光ベース) */}
-            <div className="w-60 sm:w-76 h-14 -mt-9 rounded-[50%] border-3 border-[#ff007f] bg-[#12082b] shadow-[0_0_30px_rgba(255,0,127,0.45)]"></div>
+            <div className="w-48 h-10 -mt-6 sm:w-60 sm:h-14 sm:-mt-9 md:w-76 rounded-[50%] border-2 sm:border-3 border-[#ff007f] bg-[#12082b] shadow-[0_0_30px_rgba(255,0,127,0.45)]"></div>
           </div>
 
         </div>
@@ -674,20 +732,20 @@ export default function Jinbei() {
       {/* ========================================================= */}
       {/* 4. フッターUI（CHARGEボタン・OPTIMIZEボタン）              */}
       {/* ========================================================= */}
-      <footer className="relative z-30 p-5 sm:p-8 flex items-center justify-center gap-6 sm:gap-12 pointer-events-none">
+      <footer className="relative z-30 p-3 sm:p-5 md:p-8 flex items-center justify-center gap-3 sm:gap-6 md:gap-12 pointer-events-none w-full">
         {/* CHARGE (充電・給餌) ボタン */}
         <button
           onClick={handleCharge}
-          className="pointer-events-auto group relative px-7 sm:px-11 py-3.5 sm:py-4 glass-card hover:bg-cyan-950/50 active:scale-95 rounded-2xl border-2 sm:border-3 border-[#00f2fe] shadow-[0_0_25px_rgba(0,242,254,0.35)] active:shadow-[0_0_10px_#00f2fe] transition-all flex items-center gap-3.5"
+          className="pointer-events-auto group relative flex-1 max-w-[160px] sm:flex-initial sm:max-w-none px-3.5 sm:px-7 md:px-11 py-2.5 sm:py-3.5 md:py-4 glass-card hover:bg-cyan-950/50 active:scale-95 rounded-xl sm:rounded-2xl border-2 md:border-3 border-[#00f2fe] shadow-[0_0_25px_rgba(0,242,254,0.35)] active:shadow-[0_0_10px_#00f2fe] transition-all flex items-center justify-center sm:justify-start gap-2 sm:gap-3.5"
         >
-          <div className="group-hover:rotate-12 transition-transform">
+          <div className="group-hover:rotate-12 transition-transform shrink-0">
             <BatteryChargeIcon />
           </div>
           <div className="text-left font-mono">
-            <span className="block text-sm sm:text-base font-black text-[#00f2fe] tracking-wider drop-shadow-[0_0_6px_#00f2fe]">
+            <span className="block text-xs sm:text-sm md:text-base font-black text-[#00f2fe] tracking-wider drop-shadow-[0_0_6px_#00f2fe]">
               CHARGE
             </span>
-            <span className="block text-xs font-bold text-cyan-300/80">
+            <span className="block text-[10px] sm:text-xs font-bold text-cyan-300/80">
               -20 CR
             </span>
           </div>
@@ -696,16 +754,16 @@ export default function Jinbei() {
         {/* OPTIMIZE (最適化・遊泳) ボタン */}
         <button
           onClick={handleOptimize}
-          className="pointer-events-auto group relative px-7 sm:px-11 py-3.5 sm:py-4 glass-card hover:bg-pink-950/50 active:scale-95 rounded-2xl border-2 sm:border-3 border-[#ff007f] shadow-[0_0_25px_rgba(255,0,127,0.35)] active:shadow-[0_0_10px_#ff007f] transition-all flex items-center gap-3.5"
+          className="pointer-events-auto group relative flex-1 max-w-[160px] sm:flex-initial sm:max-w-none px-3.5 sm:px-7 md:px-11 py-2.5 sm:py-3.5 md:py-4 glass-card hover:bg-pink-950/50 active:scale-95 rounded-xl sm:rounded-2xl border-2 md:border-3 border-[#ff007f] shadow-[0_0_25px_rgba(255,0,127,0.35)] active:shadow-[0_0_10px_#ff007f] transition-all flex items-center justify-center sm:justify-start gap-2 sm:gap-3.5"
         >
-          <div className="group-hover:animate-spin transition-transform">
+          <div className="group-hover:animate-spin transition-transform shrink-0">
             <OptimizeDiskIcon />
           </div>
           <div className="text-left font-mono">
-            <span className="block text-sm sm:text-base font-black text-[#ff007f] tracking-wider drop-shadow-[0_0_6px_#ff007f]">
+            <span className="block text-xs sm:text-sm md:text-base font-black text-[#ff007f] tracking-wider drop-shadow-[0_0_6px_#ff007f]">
               OPTIMIZE
             </span>
-            <span className="block text-xs font-bold text-pink-300/80">
+            <span className="block text-[10px] sm:text-xs font-bold text-pink-300/80">
               -15 CR
             </span>
           </div>
@@ -715,72 +773,30 @@ export default function Jinbei() {
       {/* ========================================================= */}
       {/* 5. 学習モジュール・設定用 モーダル                         */}
       {/* ========================================================= */}
-      {modalOpen && (
-        <div className="absolute inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="glass-card border-2 border-[#00f2fe] rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-[0_0_40px_rgba(0,242,254,0.3)] relative font-mono">
-            <button
-              onClick={() => setModalOpen(null)}
-              className="absolute top-4 right-4 text-cyan-400 hover:text-white font-black text-xl transition-colors"
-            >
-              ✕
-            </button>
+      {modalOpen === 'dict' && (
+        <WordDictionaryModal
+          onClose={() => setModalOpen(null)}
+          onWordSearched={handleWordSearched}
+        />
+      )}
 
-            {modalOpen === 'study' && (
-              <div>
-                <h3 className="text-lg sm:text-xl font-black text-[#00ff88] mb-2 flex items-center gap-2">
-                  <span>&gt; SELECT_DIFFICULTY</span>
-                </h3>
-                <p className="text-xs sm:text-sm text-cyan-200/80 mb-5">
-                  学習問題を解いて生物育成用のクレジット(CR)を獲得します。
-                </p>
-                <div className="space-y-3">
-                  <button
-                    onClick={() => handleEarnCredits(10)}
-                    className="w-full py-3 px-4 bg-emerald-950/40 hover:bg-emerald-900/60 border border-[#00ff88] text-[#00ff88] rounded-xl font-bold text-sm transition-all text-left flex justify-between items-center"
-                  >
-                    <span>[初級] 基礎文法モジュール</span>
-                    <span className="text-xs bg-emerald-500/20 px-2 py-1 rounded">+10 CR</span>
-                  </button>
-                  <button
-                    onClick={() => handleEarnCredits(30)}
-                    className="w-full py-3 px-4 bg-cyan-950/40 hover:bg-cyan-900/60 border border-[#00f2fe] text-[#00f2fe] rounded-xl font-bold text-sm transition-all text-left flex justify-between items-center"
-                  >
-                    <span>[中級] アルゴリズム実践</span>
-                    <span className="text-xs bg-cyan-500/20 px-2 py-1 rounded">+30 CR</span>
-                  </button>
-                  <button
-                    onClick={() => handleEarnCredits(60)}
-                    className="w-full py-3 px-4 bg-pink-950/40 hover:bg-pink-900/60 border border-[#ff007f] text-[#ff80bf] rounded-xl font-bold text-sm transition-all text-left flex justify-between items-center"
-                  >
-                    <span>[上級] データベース設計</span>
-                    <span className="text-xs bg-pink-500/20 px-2 py-1 rounded">+60 CR</span>
-                  </button>
-                </div>
-              </div>
-            )}
+      {modalOpen === 'study' && (
+        <QuizModal
+          onClose={() => setModalOpen(null)}
+          onQuizComplete={handleQuizComplete}
+        />
+      )}
 
-            {modalOpen === 'settings' && (
-              <div>
-                <h3 className="text-lg font-black text-cyan-300 mb-3 border-b border-cyan-800 pb-2">
-                  &gt; SYSTEM_CONFIG
-                </h3>
-                <div className="space-y-3 text-xs sm:text-sm text-slate-300">
-                  <div className="flex justify-between items-center py-1">
-                    <span>BGM / 音響効果</span>
-                    <input type="checkbox" defaultChecked className="accent-cyan-400 cursor-pointer" />
-                  </div>
-                  <div className="flex justify-between items-center py-1">
-                    <span>放置減衰アラート</span>
-                    <input type="checkbox" defaultChecked className="accent-cyan-400 cursor-pointer" />
-                  </div>
-                  <p className="text-[11px] text-cyan-400/60 pt-2 border-t border-cyan-900">
-                    ※ バックエンドAPIと接続時、Cookie経由で認証情報が維持されます。
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+      {modalOpen === 'settings' && (
+        <SystemConfigModal
+          user={user}
+          onUserChange={(u) => {
+            setUser(u);
+            setEnergy(u.energy);
+            setCredits(u.points);
+          }}
+          onClose={() => setModalOpen(null)}
+        />
       )}
     </div>
   );

@@ -1,32 +1,45 @@
--- テーブルの作成
-CREATE TABLE IF NOT EXISTS posts (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    content TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+-- ============================================================
+-- Pet-Vocab-App データベース初期化SQL (PostgreSQL)
+-- ============================================================
 
--- ダミーデータのインサート
-INSERT INTO posts (title, content) VALUES
-('秋の味覚フェア開催のお知らせ', '本日より季節限定の松茸とポルチーニ茸のリゾットが登場します。'),
-('9月の定休日について', '今月の定休日は毎週月曜日と、第3火曜日（15日）となります。'),
-('新シェフ就任のご挨拶', 'このたび、本場イタリアで修行を積んだ新しいシェフを迎えることとなりました。'),
-('ランチメニューリニューアル！', '平日限定のパスタランチセットがよりお得にリニューアルしました。');
-
--- 管理者テーブルの作成
-CREATE TABLE IF NOT EXISTS admins (
+-- 1. ユーザーテーブル (users)
+CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     hashed_password VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    points INTEGER NOT NULL DEFAULT 230,
+    energy INTEGER NOT NULL DEFAULT 95,
+    last_accessed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- テスト用初期アカウントの挿入 (ユーザー名: admin, パスワード: adminpassword123)
--- ※実際の運用環境では適切なパスワードハッシュに変更してください
-INSERT INTO admins (username, hashed_password)
-VALUES (
-    'admin',
-    '$2b$12$Cb0ELYcP6Qb0w9yslOv3Peup6YRdlbf3C7efPVXtkQG7MkqylJnki'
-) ON CONFLICT (username) DO NOTHING;
+-- 2. 単語辞書テーブル (words)
+CREATE TABLE IF NOT EXISTS words (
+    id SERIAL PRIMARY KEY,
+    word_spell VARCHAR(100) NOT NULL,
+    level VARCHAR(30) NOT NULL DEFAULT 'basic',
+    noun_meaning TEXT,
+    verb_meaning TEXT,
+    adj_meaning TEXT,
+    adv_meaning TEXT,
+    is_custom BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
 
-ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_url VARCHAR(255);
+CREATE INDEX IF NOT EXISTS ix_words_word_spell ON words (word_spell);
+CREATE INDEX IF NOT EXISTS ix_words_level ON words (level);
+
+-- 3. 学習記録・マイ単語帳 中間テーブル (user_words)
+CREATE TABLE IF NOT EXISTS user_words (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+    in_my_book BOOLEAN NOT NULL DEFAULT FALSE,
+    last_searched_at TIMESTAMP WITH TIME ZONE,
+    correct_count INTEGER NOT NULL DEFAULT 0,
+    wrong_count INTEGER NOT NULL DEFAULT 0,
+    CONSTRAINT uq_user_word UNIQUE (user_id, word_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_user_words_user_id ON user_words (user_id);
+CREATE INDEX IF NOT EXISTS ix_user_words_word_id ON user_words (word_id);
+CREATE INDEX IF NOT EXISTS ix_user_words_last_searched_at ON user_words (last_searched_at);

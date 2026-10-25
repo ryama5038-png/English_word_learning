@@ -20,10 +20,6 @@ services:
   backend:
     build:
       context: ./backend
-      args:
-        HTTP_PROXY: http://10.137.18.241:8080
-        HTTPS_PROXY: http://10.137.18.241:8080
-        NO_PROXY: localhost,127.0.0.1,db,postgres,restaurant_backend,restaurant_frontend
     container_name: restaurant_backend
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     ports:
@@ -32,10 +28,6 @@ services:
       - ./backend:/app
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/restaurant_db
-      - HTTP_PROXY=http://10.137.18.241:8080
-      - HTTPS_PROXY=http://10.137.18.241:8080
-      - NO_PROXY=localhost,127.0.0.1,db,postgres,restaurant_backend,restaurant_frontend
-      - no_proxy=localhost,127.0.0.1,db,postgres,restaurant_backend,restaurant_frontend
     depends_on:
       db:
         condition: service_healthy
@@ -43,10 +35,6 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        HTTP_PROXY: http://10.137.18.241:8080
-        HTTPS_PROXY: http://10.137.18.241:8080
-        NO_PROXY: localhost,127.0.0.1,db,postgres,restaurant_backend,restaurant_frontend
     container_name: restaurant_frontend
     ports:
       - "3000:3000"
@@ -55,10 +43,6 @@ services:
       - /app/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
-      - HTTP_PROXY=http://10.137.18.241:8080
-      - HTTPS_PROXY=http://10.137.18.241:8080
-      - NO_PROXY=localhost,127.0.0.1,db,postgres,restaurant_backend,restaurant_frontend
-      - no_proxy=localhost,127.0.0.1,db,postgres,restaurant_backend,restaurant_frontend
 
 volumes:
   pgdata:

@@ -1,199 +1,787 @@
-import os
-import uuid
-from datetime import datetime, timedelta, timezone
+import random
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import List, Optional
-from database import database
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, status
+
+from fastapi import FastAPI, Depends, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
-import bcrypt
-from pydantic import BaseModel
-from typing import Optional, Union
-# 管理者認証設定
-SECRET_KEY = "YOUR_SUPER_SECRET_KEY_HERE"  # 本番環境では環境変数化してください
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, or_, desc, func, case
 
-#フロントエンドから送信されたurlから、Bearerヘッダーを読み込んで抽出する。
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
+from database import engine, Base, AsyncSessionLocal, get_db
+from models import User, Word, UserWord
+from schemas import (
+    UserCreate,
+    UserLogin,
+    UserResponse,
+    WordCreateCustom,
+    WordOut,
+    PetActionRequest,
+    PetActionResponse,
+    IdleTalkResponse,
+    QuizQuestion,
+    QuizSubmitRequest,
+    QuizSubmitResponse,
+)
+from auth import (
+    get_password_hash,
+    verify_password,
+    create_access_token,
+    set_auth_cookie,
+    clear_auth_cookie,
+    get_current_user,
+    apply_energy_decay,
+    get_energy_status_label,
+)
+from seed_words import seed_initial_data
+from api.word import router as word_router
 
-app = FastAPI()
 
-# CORS設定
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with AsyncSessionLocal() as db:
+        await seed_initial_data(db)
+    yield
+
+
+app = FastAPI(
+    title="Pet-Vocab-App API",
+    description="ゲーミフィケーション型・個別最適化 英単語学習アプリ バックエンドAPI",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_origin_regex=r"https://.*\.cloudshell\.dev",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- 画像保存ディレクトリの設定と静的ファイル配信 ---
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-#指定したフォルダ(uploads)がローカル上に存在しない場合に自動作成、exist_ok=Trueによって、既にファイルが存在していてもFileExistsErrorを発生させず、スルーする。
-# /uploads/ファイル名 で画像にアクセスできるようにする
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-
-@app.on_event("startup")
-async def startup():
-    await database.connect()
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    await database.disconnect()
-
-
-# --- Pydantic スキーマ ---
-class PostResponse(BaseModel):
-    id: int
-    title: str
-    content: str
-    image_url: Optional[str] = None
-    created_at: datetime
-
-
-# --- 認証ユーティリティ関数 ---
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-  # passlibで生成された既存ハッシュ (str) にも互換性があります
-  return bcrypt.checkpw(
-      plain_password.encode("utf-8"), hashed_password.encode("utf-8")
-  )
-
-#パスワードをハッシュ化して、16進数の文字列にデコードする。
-def get_password_hash(password: str) -> str:
-    pwd_bytes = password.encode("utf-8")
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
-
-#{"sub": username, "exp": expire}によって、トークンを発行
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-#トークンとデータベース照合による本人確認関数
-async def get_current_admin(token: str = Depends(oauth2_scheme)):
-    # 認証用例外オブジェクトを共通化
-    credentials_exception = HTTPException(
-        status_code=401, 
-        detail="認証に失敗しました", 
-        headers={"WWW-Authenticate": "Bearer"}
+def format_word_out(word: Word, uw: Optional[UserWord]) -> WordOut:
+    return WordOut(
+        id=word.id,
+        word_spell=word.word_spell,
+        level=word.level,
+        noun_meaning=word.noun_meaning,
+        verb_meaning=word.verb_meaning,
+        adj_meaning=word.adj_meaning,
+        adv_meaning=word.adv_meaning,
+        is_custom=word.is_custom,
+        created_by=word.created_by,
+        in_my_book=uw.in_my_book if uw else False,
+        last_searched_at=uw.last_searched_at if uw else None,
+        correct_count=uw.correct_count if uw else 0,
+        wrong_count=uw.wrong_count if uw else 0,
     )
-    
-    try:
-        # トークンをデコードし、usernameをパースする
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        #Bearerトークンの中にはsolt情報が含まれるため、keyとアルゴリズム情報のみでデコード可能
-        username: str = payload.get("sub")
 
-        if username is None:
-            raise credentials_exception
 
-    except JWTError:  # JWTの解読・期限切れエラーを個別にキャッチ
-        raise credentials_exception
+def build_pos_summary(word: Word) -> str:
+    parts = []
+    if word.noun_meaning:
+        parts.append(f"【名】{word.noun_meaning}")
+    if word.verb_meaning:
+        parts.append(f"【動】{word.verb_meaning}")
+    if word.adj_meaning:
+        parts.append(f"【形】{word.adj_meaning}")
+    if word.adv_meaning:
+        parts.append(f"【副】{word.adv_meaning}")
+    return " / ".join(parts) if parts else "意味未登録"
 
-    # 該当するusernameがデータベース内にあるかを確認 (id等の情報も含めて取得)
-    query = "SELECT * FROM admins WHERE username = :username"
-    current_admin = await database.fetch_one(query=query, values={"username": username})
 
-    # ユーザーの存在確認
-    if current_admin is None:
+# ==========================================
+# 1. 認証・ユーザー情報 API (/api/auth)
+# ==========================================
+@app.post("/api/auth/register", response_model=UserResponse)
+async def register(
+    payload: UserCreate,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    username = payload.username.strip()
+    existing = await db.execute(select(User).where(User.username == username))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="このユーザー名は既に使用されています。")
+
+    new_user = User(
+        username=username,
+        hashed_password=get_password_hash(payload.password),
+        points=230,
+        energy=95,
+        last_accessed_at=datetime.now(timezone.utc),
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+
+    token = create_access_token({"sub": str(new_user.id)})
+    set_auth_cookie(response, token)
+
+    return UserResponse(
+        id=new_user.id,
+        username=new_user.username,
+        points=new_user.points,
+        energy=new_user.energy,
+        last_accessed_at=new_user.last_accessed_at,
+        energy_status=get_energy_status_label(new_user.energy),
+        decayed_amount=0,
+    )
+
+
+@app.post("/api/auth/login", response_model=UserResponse)
+async def login(
+    payload: UserLogin,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User).where(User.username == payload.username.strip())
+    )
+    user = result.scalar_one_or_none()
+    if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(
-            status_code=401, 
-            detail="アカウントが無効です。", 
-            headers={"WWW-Authenticate": "Bearer"}
+            status_code=401, detail="ユーザー名またはパスワードが正しくありません。"
         )
 
-    # ユーザーが存在した場合、current_admin（辞書/行オブジェクト）を返す
-    return current_admin
+    decayed = await apply_energy_decay(user, db)
+    token = create_access_token({"sub": str(user.id)})
+    set_auth_cookie(response, token)
 
-# --- API エンドポイント ---
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        points=user.points,
+        energy=user.energy,
+        last_accessed_at=user.last_accessed_at,
+        energy_status=get_energy_status_label(user.energy),
+        decayed_amount=decayed,
+    )
 
-@app.get("/api/info")
-def get_info():
+
+@app.post("/api/auth/logout")
+async def logout(response: Response):
+    clear_auth_cookie(response)
+    return {"message": "ログアウトしました"}
+
+
+@app.get("/api/auth/me", response_model=UserResponse)
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    decayed = await apply_energy_decay(current_user, db)
+    return UserResponse(
+        id=current_user.id,
+        username=current_user.username,
+        points=current_user.points,
+        energy=current_user.energy,
+        last_accessed_at=current_user.last_accessed_at,
+        energy_status=get_energy_status_label(current_user.energy),
+        decayed_amount=decayed,
+    )
+
+
+# ==========================================
+# 2. サイバーペット育成＆無意識復習 API (/api/pet)
+# ==========================================
+@app.get("/api/pet/idle-talk", response_model=IdleTalkResponse)
+async def get_pet_idle_talk(
+    exclude_word_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    直近で検索した単語（最大20件）からランダムに選び、
+    ペットの現在のエネルギー残量（元気・普通・衰弱）に応じた口調で呟く
+    """
+    await apply_energy_decay(current_user, db)
+    energy = current_user.energy
+    status_label = get_energy_status_label(energy)
+
+    # 直近検索した単語 最大20件を取得
+    stmt = (
+        select(Word, UserWord)
+        .join(UserWord, UserWord.word_id == Word.id)
+        .where(
+            UserWord.user_id == current_user.id,
+            UserWord.last_searched_at.isnot(None),
+        )
+        .order_by(desc(UserWord.last_searched_at))
+        .limit(20)
+    )
+    res = await db.execute(stmt)
+    rows = res.all()
+
+    words_pool = [r[0] for r in rows]
+
+    # まだ検索履歴がない場合はマイ単語帳または全体の単語から取得
+    if not words_pool:
+        fallback_stmt = select(Word).limit(20)
+        fallback_res = await db.execute(fallback_stmt)
+        words_pool = list(fallback_res.scalars().all())
+
+    if exclude_word_id and len(words_pool) > 1:
+        filtered = [w for w in words_pool if w.id != exclude_word_id]
+        if filtered:
+            words_pool = filtered
+
+    if not words_pool:
+        return IdleTalkResponse(
+            speech="システム安定中。単語を検索してマイ単語帳を増やそう！⚡",
+            energy=energy,
+            energy_status=status_label,
+        )
+
+    target_word = random.choice(words_pool)
+    pos_summary = build_pos_summary(target_word)
+
+    # エネルギー状態（元気 / 普通 / 衰弱）によって口調を変化させる
+    if energy >= 70:
+        templates = [
+            f"「{target_word.word_spell}」は {pos_summary} って意味だよ！⚡ バッチリ覚えちゃおう♪",
+            f"復習タイム！✨「{target_word.word_spell}」＝ {pos_summary} だよ！エネルギー満タンで絶好調！",
+            f"ねぇマスター！「{target_word.word_spell}」の意味、覚えてる？ {pos_summary} だよ♪",
+            f"「{target_word.word_spell}」({pos_summary})！品詞の違いにも気をつけてね⚡",
+        ]
+    elif energy >= 30:
+        templates = [
+            f"「{target_word.word_spell}」は {pos_summary} って意味だよ💭 そろそろ少しお腹が空いてきたかも…",
+            f"復習メモ：「{target_word.word_spell}」＝ {pos_summary} だよ。テストでポイントを稼いでチャージしてね。",
+            f"「{target_word.word_spell}」の意味は {pos_summary} … もう少しエネルギーがあると嬉しいな⚡",
+        ]
+    else:
+        templates = [
+            f"うぅ…エネルギー切れそう…💦「{target_word.word_spell}」は {pos_summary} …はやくCHARGEしてぇ…",
+            f"⚠️ バッテリー低下中…「{target_word.word_spell}」＝ {pos_summary} …力が…出ないよ…",
+            f"システム衰弱中…💦「{target_word.word_spell}」({pos_summary})…テストを解いて助けてマスター…",
+        ]
+
+    return IdleTalkResponse(
+        speech=random.choice(templates),
+        energy=energy,
+        energy_status=status_label,
+        word_id=target_word.id,
+        word_spell=target_word.word_spell,
+    )
+
+
+@app.post("/api/pet/action", response_model=PetActionResponse)
+async def pet_action(
+    payload: PetActionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    action = payload.action_type
+    now = datetime.now(timezone.utc)
+
+    if action == "charge":
+        if current_user.points < 20:
+            raise HTTPException(
+                status_code=400,
+                detail="ポイント(CR)が足りません！単語テストを解いて獲得しましょう（必要: 20 CR）",
+            )
+        current_user.points -= 20
+        current_user.energy = min(100, current_user.energy + 10)
+        current_user.last_accessed_at = now
+        speech = f"エネルギー充填完了 (+10%)！現在 {current_user.energy}% だよ、ありがとう！⚡"
+
+    elif action == "optimize":
+        if current_user.points < 15:
+            raise HTTPException(
+                status_code=400,
+                detail="ポイント(CR)が足りません！単語テストを解いて獲得しましょう（必要: 15 CR）",
+            )
+        current_user.points -= 15
+        current_user.energy = min(100, current_user.energy + 5)
+        current_user.last_accessed_at = now
+        speech = f"システム最適化完了 (+5%)！動作サクサクで嬉しいな♪✨"
+
+    elif action == "set_energy":
+        # デモ・検証用：放置減衰による状態変化（元気・普通・衰弱）を即座に確認できる機能
+        target = payload.target_energy if payload.target_energy is not None else 50
+        current_user.energy = max(0, min(100, target))
+        current_user.last_accessed_at = now
+        status_label = get_energy_status_label(current_user.energy)
+        speech = f"エネルギー状態を「{status_label} ({current_user.energy}%)」にシミュレート変更したよ！"
+
+    else:
+        raise HTTPException(status_code=400, detail="無効なアクションです。")
+
+    await db.commit()
+    await db.refresh(current_user)
+
+    return PetActionResponse(
+        points=current_user.points,
+        energy=current_user.energy,
+        energy_status=get_energy_status_label(current_user.energy),
+        speech=speech,
+    )
+
+
+# ==========================================
+# 3. 単語検索・カスタム登録・マイ単語帳 API (/api/words)
+# ==========================================
+app.include_router(word_router)
+
+
+@app.get("/api/words/stats")
+async def get_words_stats(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    total_res = await db.execute(select(func.count(Word.id)))
+    total_words = total_res.scalar() or 0
+
+    my_book_res = await db.execute(
+        select(func.count(UserWord.id)).where(
+            UserWord.user_id == current_user.id,
+            UserWord.in_my_book.is_(True),
+        )
+    )
+    my_book_count = my_book_res.scalar() or 0
+
     return {
-        "name": "Culinary Haven",
-        "description": "旬の地場食材をふんだんに使った、心温まる創作イタリアンレストランです。",
-        "address": "東京都渋谷区神南 1-2-3",
-        "hours": "11:30 - 22:00 (L.O. 21:30)",
-        "closed": "毎週月曜日",
-        "phone": "03-1234-5678"
+        "total_words": total_words,
+        "my_book_count": my_book_count,
     }
 
 
-# 1. ログイン（データベースとのパスワード照合）+ トークン発行
-@app.post("/api/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    # DBから管理者情報を取得
-    query = "SELECT * FROM admins WHERE username = :username"
-    admin = await database.fetch_one(query=query, values={"username": form_data.username})
+@app.get("/api/words", response_model=List[WordOut])
+async def search_words(
+    q: str = Query("", description="検索キーワード（英単語または日本語の意味）"),
+    level: str = Query("all", description="all, basic, advanced, toeic, custom"),
+    my_book_only: bool = Query(False, description="マイ単語帳のみ取得"),
+    recent_only: bool = Query(False, description="直近検索した単語(最大20件)のみ取得"),
+    record_search: bool = Query(False, description="検索ヒット時に検索日時を記録するか"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(Word, UserWord)
+        .outerjoin(
+            UserWord,
+            (UserWord.word_id == Word.id) & (UserWord.user_id == current_user.id),
+        )
+    )
 
-    # ユーザーが存在しない、またはパスワード不一致の場合エラー
-    if not admin or not verify_password(form_data.password, admin["hashed_password"]):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="ユーザー名またはパスワードが正しくありません",
-            headers={"WWW-Authenticate": "Bearer"},
+    if level and level != "all":
+        stmt = stmt.where(Word.level == level)
+
+    clean_q = q.strip()
+    if clean_q:
+        kw = f"%{clean_q}%"
+        stmt = stmt.where(
+            or_(
+                Word.word_spell.ilike(kw),
+                Word.noun_meaning.ilike(kw),
+                Word.verb_meaning.ilike(kw),
+                Word.adj_meaning.ilike(kw),
+                Word.adv_meaning.ilike(kw),
+            )
         )
 
-    access_token = create_access_token(data={"sub": admin["username"]})
-    return {"access_token": access_token, "token_type": "bearer"}
+    if my_book_only:
+        stmt = stmt.where(UserWord.in_my_book.is_(True))
+
+    if recent_only:
+        stmt = stmt.where(UserWord.last_searched_at.isnot(None)).order_by(
+            desc(UserWord.last_searched_at)
+        ).limit(20)
+    elif clean_q:
+        rank_order = case(
+            (Word.word_spell.ilike(clean_q), 0),
+            (Word.word_spell.ilike(f"{clean_q}%"), 1),
+            else_=2,
+        )
+        stmt = stmt.order_by(rank_order, Word.word_spell.asc()).limit(150)
+    else:
+        stmt = stmt.order_by(Word.word_spell.asc()).limit(150)
+
+    res = await db.execute(stmt)
+    rows = res.all()
+
+    # 検索キーワードが指定されていて record_search=True の場合、上位ヒット単語の検索履歴を更新
+    if q.strip() and record_search and rows:
+        now = datetime.now(timezone.utc)
+        for word_obj, uw_obj in rows[:5]:
+            if uw_obj is None:
+                uw_obj = UserWord(
+                    user_id=current_user.id,
+                    word_id=word_obj.id,
+                    in_my_book=False,
+                    last_searched_at=now,
+                    correct_count=0,
+                    wrong_count=0,
+                )
+                db.add(uw_obj)
+            else:
+                uw_obj.last_searched_at = now
+        await db.commit()
+        # 再取得して最新状態を返す
+        res = await db.execute(stmt)
+        rows = res.all()
+
+    return [format_word_out(w, uw) for w, uw in rows]
 
 
-# 2. 投稿の新規作成（画像アップロード対応 & JWT認証）
-@app.post("/api/posts", response_model=PostResponse)
-async def create_post(
-    title: str = Form(...),
-    content: str = Form(...),
-    image: Optional[UploadFile] = File(None),  # Union[UploadFile, str] ではなく UploadFile 単体にする
-    #Uploadingクラスは、fastAPIでバイナリファイルを受信するための標準クラス
-    current_admin: dict = Depends(get_current_admin)
+@app.post("/api/words/{word_id}/search-log", response_model=WordOut)
+async def log_word_search(
+    word_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
+    """単語をタップ・詳細確認した際に直近検索履歴(last_searched_at)を更新する"""
+    word_res = await db.execute(select(Word).where(Word.id == word_id))
+    word = word_res.scalar_one_or_none()
+    if not word:
+        raise HTTPException(status_code=404, detail="単語が見つかりません。")
 
-    image_url = None
+    uw_res = await db.execute(
+        select(UserWord).where(
+            UserWord.user_id == current_user.id,
+            UserWord.word_id == word_id,
+        )
+    )
+    uw = uw_res.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if not uw:
+        uw = UserWord(
+            user_id=current_user.id,
+            word_id=word_id,
+            in_my_book=False,
+            last_searched_at=now,
+            correct_count=0,
+            wrong_count=0,
+        )
+        db.add(uw)
+    else:
+        uw.last_searched_at = now
 
-    # image が存在し、ファイル名が空でない場合のみ画像を保存
-    if image and image.filename and image.filename.strip() != "":
-        file_extension = os.path.splitext(image.filename)[1]
-        #このコードによって、ファイル名と拡張子が分離した要素数2のタプルが作成される。
-        unique_filename = f"{uuid.uuid4()}{file_extension}"
-        file_path = os.path.join(UPLOAD_DIR, unique_filename)
-
-        with open(file_path, "wb") as buffer:
-            buffer.write(await image.read())
-
-        image_url = f"/uploads/{unique_filename}"
-
-    query = """
-        INSERT INTO posts (title, content, image_url)
-        VALUES (:title, :content, :image_url)
-        RETURNING id, title, content, image_url, created_at
-    """
-    values = {"title": title, "content": content, "image_url": image_url}
-
-    new_post = await database.fetch_one(query=query, values=values)
-    return new_post
+    await db.commit()
+    await db.refresh(uw)
+    return format_word_out(word, uw)
 
 
-# 3. 投稿一覧の取得
-@app.get("/api/posts", response_model=List[PostResponse])
-async def get_posts(
-    limit: int = Query(default=5, ge=1),
-    offset: int = Query(default=0, ge=0)
+@app.post("/api/words/custom", response_model=WordOut)
+async def create_custom_word(
+    payload: WordCreateCustom,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    query = """
-        SELECT id, title, content, image_url, created_at
-        FROM posts
-        ORDER BY created_at DESC
-        LIMIT :limit OFFSET :offset
     """
-    values = {"limit": limit, "offset": offset}
-    
-    posts = await database.fetch_all(query=query, values=values)
-    return posts
+    未知の単語を各品詞（名詞、動詞、形容詞、副詞）ごとに意味を入力してDBに追加し、
+    マイ単語帳にも登録する
+    """
+    spell = payload.word_spell.strip()
+    noun = payload.noun_meaning.strip() if payload.noun_meaning else None
+    verb = payload.verb_meaning.strip() if payload.verb_meaning else None
+    adj = payload.adj_meaning.strip() if payload.adj_meaning else None
+    adv = payload.adv_meaning.strip() if payload.adv_meaning else None
+
+    if not any([noun, verb, adj, adv]):
+        raise HTTPException(
+            status_code=400,
+            detail="名詞・動詞・形容詞・副詞のうち、少なくとも1つの意味を入力してください。",
+        )
+
+    # 既存単語に同じスペルがあるかチェック
+    existing_res = await db.execute(
+        select(Word).where(Word.word_spell.ilike(spell))
+    )
+    existing_word = existing_res.scalars().first()
+
+    if existing_word:
+        # 既存の単語がある場合は品詞の意味を追記・更新可能にする
+        if noun:
+            existing_word.noun_meaning = noun
+        if verb:
+            existing_word.verb_meaning = verb
+        if adj:
+            existing_word.adj_meaning = adj
+        if adv:
+            existing_word.adv_meaning = adv
+        word = existing_word
+    else:
+        word = Word(
+            word_spell=spell,
+            level=payload.level or "custom",
+            noun_meaning=noun,
+            verb_meaning=verb,
+            adj_meaning=adj,
+            adv_meaning=adv,
+            is_custom=True,
+            created_by=current_user.id,
+        )
+        db.add(word)
+        await db.commit()
+        await db.refresh(word)
+
+    uw_res = await db.execute(
+        select(UserWord).where(
+            UserWord.user_id == current_user.id,
+            UserWord.word_id == word.id,
+        )
+    )
+    uw = uw_res.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if not uw:
+        uw = UserWord(
+            user_id=current_user.id,
+            word_id=word.id,
+            in_my_book=payload.add_to_my_book,
+            last_searched_at=now,
+            correct_count=0,
+            wrong_count=0,
+        )
+        db.add(uw)
+    else:
+        uw.in_my_book = payload.add_to_my_book
+        uw.last_searched_at = now
+
+    await db.commit()
+    await db.refresh(word)
+    await db.refresh(uw)
+
+    return format_word_out(word, uw)
+
+
+@app.post("/api/words/{word_id}/toggle-book", response_model=WordOut)
+async def toggle_my_book(
+    word_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """マイ単語帳への登録・解除をトグルする"""
+    word_res = await db.execute(select(Word).where(Word.id == word_id))
+    word = word_res.scalar_one_or_none()
+    if not word:
+        raise HTTPException(status_code=404, detail="単語が見つかりません。")
+
+    uw_res = await db.execute(
+        select(UserWord).where(
+            UserWord.user_id == current_user.id,
+            UserWord.word_id == word_id,
+        )
+    )
+    uw = uw_res.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if not uw:
+        uw = UserWord(
+            user_id=current_user.id,
+            word_id=word_id,
+            in_my_book=True,
+            last_searched_at=now,
+            correct_count=0,
+            wrong_count=0,
+        )
+        db.add(uw)
+    else:
+        uw.in_my_book = not uw.in_my_book
+        if uw.in_my_book and not uw.last_searched_at:
+            uw.last_searched_at = now
+
+    await db.commit()
+    await db.refresh(uw)
+    return format_word_out(word, uw)
+
+
+# ==========================================
+# 4. 単語テスト・弱点克服クイズ API (/api/quiz)
+# ==========================================
+@app.get("/api/quiz/questions", response_model=List[QuizQuestion])
+async def get_quiz_questions(
+    category: str = Query(
+        "basic",
+        description="basic, advanced, toeic, recent, weak, my_book",
+    ),
+    count: int = Query(5, ge=1, le=20),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    選択された出題範囲から、品詞を明示した4択テスト問題を生成する。
+    正解・不正解の履歴(wrong_count, correct_count)を考慮し、弱点単語を優先出題する。
+    """
+    stmt = select(Word, UserWord).outerjoin(
+        UserWord,
+        (UserWord.word_id == Word.id) & (UserWord.user_id == current_user.id),
+    )
+
+    if category in ("basic", "advanced", "toeic", "custom"):
+        stmt = stmt.where(Word.level == category)
+    elif category == "recent":
+        stmt = stmt.where(UserWord.last_searched_at.isnot(None)).order_by(
+            desc(UserWord.last_searched_at)
+        )
+    elif category == "weak":
+        stmt = stmt.where(UserWord.wrong_count > 0)
+    elif category == "my_book":
+        stmt = stmt.where(UserWord.in_my_book.is_(True))
+
+    res = await db.execute(stmt)
+    candidates = res.all()
+
+    if not candidates:
+        raise HTTPException(
+            status_code=404,
+            detail="この出題範囲にはまだ対象の単語がありません（先に単語検索やマイ単語帳登録、または通常テストを行ってください）。",
+        )
+
+    # 弱点克服ソートロジック：(wrong_count - correct_count) が高い順 + ランダム性
+    def weakness_score(item):
+        _, uw = item
+        wrong = uw.wrong_count if uw else 0
+        correct = uw.correct_count if uw else 0
+        return (wrong * 3 - correct) + random.uniform(0, 1.5)
+
+    if category != "recent":
+        candidates.sort(key=weakness_score, reverse=True)
+    else:
+        # 直近検索(最大20件)の中から弱点優先で出題
+        candidates = candidates[:20]
+        candidates.sort(key=weakness_score, reverse=True)
+
+    selected_pairs = candidates[:count]
+
+    # ダミー選択肢生成用に全単語を取得
+    all_words_res = await db.execute(select(Word))
+    all_words = list(all_words_res.scalars().all())
+
+    pos_Sequence = [
+        ("noun", "名詞", "noun_meaning"),
+        ("verb", "動詞", "verb_meaning"),
+        ("adj", "形容詞", "adj_meaning"),
+        ("adv", "副詞", "adv_meaning"),
+    ]
+
+    questions: List[QuizQuestion] = []
+    for word_obj, uw_obj in selected_pairs:
+        available_pos = []
+        for p_key, p_label, attr in pos_Sequence:
+            val = getattr(word_obj, attr)
+            if val:
+                available_pos.append((p_key, p_label, attr, val))
+
+        if not available_pos:
+            continue
+
+        # ランダムに1つの品詞を出題対象にする（品詞混同の防止）
+        p_key, p_label, attr, correct_meaning = random.choice(available_pos)
+
+        # 同じ品詞の他単語の意味から誤答選択肢を収集
+        distractors_pool = [
+            getattr(w, attr)
+            for w in all_words
+            if w.id != word_obj.id and getattr(w, attr) and getattr(w, attr) != correct_meaning
+        ]
+        # もし同じ品詞の他単語が少なければ全品詞の意味から補完
+        if len(distractors_pool) < 3:
+            for w in all_words:
+                if w.id != word_obj.id:
+                    for _, _, other_attr in pos_Sequence:
+                        v = getattr(w, other_attr)
+                        if v and v != correct_meaning and v not in distractors_pool:
+                            distractors_pool.append(v)
+
+        distractors = random.sample(distractors_pool, k=min(3, len(distractors_pool)))
+        options = distractors + [correct_meaning]
+        random.shuffle(options)
+        correct_idx = options.index(correct_meaning)
+
+        questions.append(
+            QuizQuestion(
+                word_id=word_obj.id,
+                word_spell=word_obj.word_spell,
+                level=word_obj.level,
+                pos_key=p_key,
+                pos_label=p_label,
+                options=options,
+                correct_index=correct_idx,
+                correct_meaning=correct_meaning,
+                all_meanings_summary=build_pos_summary(word_obj),
+                correct_count=uw_obj.correct_count if uw_obj else 0,
+                wrong_count=uw_obj.wrong_count if uw_obj else 0,
+            )
+        )
+
+    return questions
+
+
+@app.post("/api/quiz/submit", response_model=QuizSubmitResponse)
+async def submit_quiz(
+    payload: QuizSubmitRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    テスト結果を記録し、正解・不正解カウントを更新、ポイント(CR)を付与する
+    """
+    correct_total = 0
+    question_total = len(payload.answers)
+    now = datetime.now(timezone.utc)
+
+    for ans in payload.answers:
+        if ans.is_correct:
+            correct_total += 1
+
+        uw_res = await db.execute(
+            select(UserWord).where(
+                UserWord.user_id == current_user.id,
+                UserWord.word_id == ans.word_id,
+            )
+        )
+        uw = uw_res.scalar_one_or_none()
+        if not uw:
+            uw = UserWord(
+                user_id=current_user.id,
+                word_id=ans.word_id,
+                in_my_book=False,
+                last_searched_at=now,
+                correct_count=1 if ans.is_correct else 0,
+                wrong_count=0 if ans.is_correct else 1,
+            )
+            db.add(uw)
+        else:
+            if ans.is_correct:
+                uw.correct_count += 1
+            else:
+                uw.wrong_count += 1
+
+    # 難易度・カテゴリ別のポイント計算
+    base_per_correct = 10
+    if payload.category in ("advanced", "toeic", "my_book", "recent"):
+        base_per_correct = 15
+    elif payload.category == "weak":
+        base_per_correct = 20
+
+    earned_points = correct_total * base_per_correct
+    if question_total > 0 and correct_total == question_total:
+        earned_points += 10  # 全問正解ボーナス
+
+    current_user.points += earned_points
+    current_user.last_accessed_at = now
+    await db.commit()
+    await db.refresh(current_user)
+
+    if correct_total == question_total and question_total > 0:
+        speech = f"パーフェクト！！全{question_total}問正解で +{earned_points} CR 獲得したよ！🎉⚡"
+    elif correct_total > 0:
+        speech = f"テスト完了！ {question_total}問中 {correct_total}問正解！ +{earned_points} CR 獲得だよ✨"
+    else:
+        speech = "おしいっ！間違えた単語は「弱点克服テスト」からいつでも復習できるよ💪"
+
+    return QuizSubmitResponse(
+        earned_points=earned_points,
+        total_points=current_user.points,
+        correct_total=correct_total,
+        question_total=question_total,
+        speech=speech,
+    )
