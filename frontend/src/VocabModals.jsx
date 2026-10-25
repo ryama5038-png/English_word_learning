@@ -698,11 +698,17 @@ export function QuizModal({ onClose, onQuizComplete }) {
 // ============================================================================
 // 3. システム設定 ＆ アカウント認証(JWT Cookie) ＆ エネルギー状態シミュレーター
 // ============================================================================
-export function SystemConfigModal({ user, onClose, onUserUpdated }) {
+export function SystemConfigModal({ user, onClose, onUserUpdated, onUserChange }) {
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
+
+  const notifyUser = (data) => {
+    if (onUserUpdated) onUserUpdated(data);
+    if (onUserChange) onUserChange(data);
+    window.dispatchEvent(new CustomEvent('pet-auth-changed', { detail: data }));
+  };
 
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
@@ -715,7 +721,7 @@ export function SystemConfigModal({ user, onClose, onUserUpdated }) {
       setStatusMsg(`✅ ユーザー「${data.username}」で認証しました！`);
       setUsername('');
       setPassword('');
-      if (onUserUpdated) onUserUpdated(data);
+      notifyUser(data);
     } catch (err) {
       setStatusMsg(
         '⚠️ ' + (err.response?.data?.detail || '認証エラーが発生しました。')
@@ -723,19 +729,27 @@ export function SystemConfigModal({ user, onClose, onUserUpdated }) {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+      notifyUser(null);
+      if (onClose) onClose();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleSimulateEnergy = async (targetEnergy) => {
     try {
       const res = await petApi.performAction('set_energy', targetEnergy);
       setStatusMsg(`⚡ ${res.speech}`);
-      if (onUserUpdated) {
-        onUserUpdated({
-          ...user,
-          energy: res.energy,
-          points: res.points,
-          energy_status: res.energy_status,
-          lastSpeech: res.speech,
-        });
-      }
+      notifyUser({
+        ...user,
+        energy: res.energy,
+        points: res.points,
+        energy_status: res.energy_status,
+        lastSpeech: res.speech,
+      });
     } catch (err) {
       console.error(err);
     }
@@ -762,20 +776,39 @@ export function SystemConfigModal({ user, onClose, onUserUpdated }) {
         )}
 
         {/* 現在のユーザーステータス */}
-        <div className="bg-[#08061a] border border-cyan-800/60 rounded-xl p-3 mb-4 text-xs space-y-1">
-          <div className="flex justify-between">
+        <div className="bg-[#08061a] border border-cyan-800/60 rounded-xl p-3 mb-4 text-xs space-y-1.5">
+          <div className="flex justify-between items-center">
             <span className="text-slate-400">ログイン中ユーザー:</span>
-            <span className="font-black text-[#00f2fe]">{user?.username || 'master'}</span>
+            <span className="font-black text-[#00f2fe]">{user?.username || '未認証'}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-400">学習エージェント:</span>
+            <span className="font-black text-cyan-200">
+              {user?.character_type === 'jinbei'
+                ? '🦈 ジンベイザメ'
+                : user?.character_type === 'slime'
+                ? '🔮 スライム'
+                : '🪼 クラゲ'}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-400">ペット状態 (エネルギー):</span>
             <span className="font-black text-emerald-300">
-              {user?.energy ?? 95}% ({user?.energy_status || '元気'})
+              {user?.energy ?? 100}% ({user?.energy_status || '元気'})
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-400">保有ポイント (CR):</span>
-            <span className="font-black text-pink-400">{user?.points ?? 230} CR</span>
+            <span className="font-black text-pink-400">{user?.points ?? 0} CR</span>
+          </div>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 border border-rose-500 text-rose-300 font-black text-xs transition-all"
+            >
+              🚪 ログアウトしてログイン画面へ戻る
+            </button>
           </div>
         </div>
 
@@ -813,7 +846,7 @@ export function SystemConfigModal({ user, onClose, onUserUpdated }) {
         <form onSubmit={handleAuthSubmit} className="space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-cyan-300">
-              &gt; {authMode === 'login' ? 'アカウントログイン' : '新規ユーザー登録'}
+              &gt; {authMode === 'login' ? 'アカウント切替ログイン' : '新規ユーザー登録'}
             </span>
             <button
               type="button"
@@ -831,7 +864,7 @@ export function SystemConfigModal({ user, onClose, onUserUpdated }) {
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="ユーザー名 (初期デモ: master)"
+            placeholder="ユーザー名 (例: testuser_a / testuser_b)"
             className="w-full bg-[#08061a] border border-cyan-700/60 rounded-xl px-3 py-2 text-xs text-white"
           />
           <input
@@ -839,7 +872,7 @@ export function SystemConfigModal({ user, onClose, onUserUpdated }) {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="パスワード (初期デモ: password123)"
+            placeholder="パスワード (testuser_a: password123)"
             className="w-full bg-[#08061a] border border-cyan-700/60 rounded-xl px-3 py-2 text-xs text-white"
           />
           <button

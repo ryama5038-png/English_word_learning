@@ -6,12 +6,13 @@ from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, desc, func, case
+from sqlalchemy import select, or_, desc, func, case, text
 
 from database import engine, Base, AsyncSessionLocal, get_db
 from models import User, Word, UserWord
 from schemas import (
     UserCreate,
+    CharacterSelectRequest,
     UserLogin,
     UserResponse,
     WordCreateCustom,
@@ -41,6 +42,9 @@ from api.word import router as word_router
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text("ALTER TABLE users ADD COLUMN IF NOT EXISTS character_type VARCHAR(30);")
+        )
     async with AsyncSessionLocal() as db:
         await seed_initial_data(db)
     yield
@@ -100,6 +104,9 @@ def build_pos_summary(word: Word) -> str:
 # ==========================================
 # 1. 認証・ユーザー情報 API (/api/auth)
 # ==========================================
+VALID_CHARACTERS = {"kurage", "jinbei", "slime"}
+
+
 @app.post("/api/auth/register", response_model=UserResponse)
 async def register(
     payload: UserCreate,
@@ -111,9 +118,16 @@ async def register(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="このユーザー名は既に使用されています。")
 
+    char_type = (
+        payload.character_type
+        if payload.character_type in VALID_CHARACTERS
+        else None
+    )
+
     new_user = User(
         username=username,
         hashed_password=get_password_hash(payload.password),
+        character_type=char_type,
         points=230,
         energy=95,
         last_accessed_at=datetime.now(timezone.utc),
@@ -128,10 +142,41 @@ async def register(
     return UserResponse(
         id=new_user.id,
         username=new_user.username,
+        character_type=new_user.character_type,
         points=new_user.points,
         energy=new_user.energy,
         last_accessed_at=new_user.last_accessed_at,
         energy_status=get_energy_status_label(new_user.energy),
+        decayed_amount=0,
+    )
+
+
+@app.post("/api/auth/character", response_model=UserResponse)
+@app.put("/api/auth/character", response_model=UserResponse)
+async def select_character(
+    payload: CharacterSelectRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if payload.character_type not in VALID_CHARACTERS:
+        raise HTTPException(
+            status_code=400,
+            detail="無効なキャラクターです。クラゲ(kurage)、ジンベイザメ(jinbei)、スライム(slime)から選択してください。",
+        )
+
+    current_user.character_type = payload.character_type
+    current_user.last_accessed_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(current_user)
+
+    return UserResponse(
+        id=current_user.id,
+        username=current_user.username,
+        character_type=current_user.character_type,
+        points=current_user.points,
+        energy=current_user.energy,
+        last_accessed_at=current_user.last_accessed_at,
+        energy_status=get_energy_status_label(current_user.energy),
         decayed_amount=0,
     )
 
@@ -158,6 +203,7 @@ async def login(
     return UserResponse(
         id=user.id,
         username=user.username,
+        character_type=user.character_type,
         points=user.points,
         energy=user.energy,
         last_accessed_at=user.last_accessed_at,
@@ -181,6 +227,7 @@ async def get_me(
     return UserResponse(
         id=current_user.id,
         username=current_user.username,
+        character_type=current_user.character_type,
         points=current_user.points,
         energy=current_user.energy,
         last_accessed_at=current_user.last_accessed_at,
@@ -337,7 +384,11 @@ async def get_words_stats(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    total_res = await db.execute(select(func.count(Word.id)))
+    total_res = await db.execute(
+        select(func.count(Word.id)).where(
+            or_(Word.is_custom.is_(False), Word.created_by == current_user.id)
+        )
+    )
     total_words = total_res.scalar() or 0
 
     my_book_res = await db.execute(
@@ -369,6 +420,9 @@ async def search_words(
         .outerjoin(
             UserWord,
             (UserWord.word_id == Word.id) & (UserWord.user_id == current_user.id),
+        )
+        .where(
+            or_(Word.is_custom.is_(False), Word.created_by == current_user.id)
         )
     )
 
@@ -610,9 +664,15 @@ async def get_quiz_questions(
     選択された出題範囲から、品詞を明示した4択テスト問題を生成する。
     正解・不正解の履歴(wrong_count, correct_count)を考慮し、弱点単語を優先出題する。
     """
-    stmt = select(Word, UserWord).outerjoin(
-        UserWord,
-        (UserWord.word_id == Word.id) & (UserWord.user_id == current_user.id),
+    stmt = (
+        select(Word, UserWord)
+        .outerjoin(
+            UserWord,
+            (UserWord.word_id == Word.id) & (UserWord.user_id == current_user.id),
+        )
+        .where(
+            or_(Word.is_custom.is_(False), Word.created_by == current_user.id)
+        )
     )
 
     if category in ("basic", "advanced", "toeic", "custom"):

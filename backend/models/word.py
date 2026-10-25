@@ -22,6 +22,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    character_type: Mapped[Optional[str]] = mapped_column(String(30), nullable=True, default=None)
     points: Mapped[int] = mapped_column(Integer, default=230, nullable=False)
     energy: Mapped[int] = mapped_column(Integer, default=95, nullable=False)
     last_accessed_at: Mapped[datetime] = mapped_column(

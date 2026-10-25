@@ -9,8 +9,18 @@ export const authApi = {
   getMe: () => api.get('/auth/me').then((r) => r.data),
   login: (username, password) =>
     api.post('/auth/login', { username, password }).then((r) => r.data),
-  register: (username, password) =>
-    api.post('/auth/register', { username, password }).then((r) => r.data),
+  register: (username, password, characterType = null) =>
+    api
+      .post('/auth/register', {
+        username,
+        password,
+        character_type: characterType,
+      })
+      .then((r) => r.data),
+  selectCharacter: (characterType) =>
+    api
+      .post('/auth/character', { character_type: characterType })
+      .then((r) => r.data),
   logout: () => api.post('/auth/logout').then((r) => r.data),
 };
 

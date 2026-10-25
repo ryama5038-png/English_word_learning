@@ -7,6 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=2, max_length=50)
     password: str = Field(..., min_length=4, max_length=100)
+    character_type: Optional[str] = None
+
+
+class CharacterSelectRequest(BaseModel):
+    character_type: str = Field(..., pattern="^(kurage|jinbei|slime)$")
 
 
 class UserLogin(BaseModel):
@@ -19,6 +24,7 @@ class UserResponse(BaseModel):
 
     id: int
     username: str
+    character_type: Optional[str] = None
     points: int
     energy: int
     last_accessed_at: datetime

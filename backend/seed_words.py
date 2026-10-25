@@ -534,20 +534,37 @@ DEFAULT_WORDS = [
 
 
 async def seed_initial_data(db: AsyncSession):
-    # 1. デモユーザー 'master' の作成
-    res = await db.execute(select(User).where(User.username == "master"))
-    master_user = res.scalar_one_or_none()
-    if not master_user:
-        master_user = User(
-            username="master",
-            hashed_password=get_password_hash("password123"),
-            points=230,
-            energy=95,
-            last_accessed_at=datetime.now(timezone.utc),
-        )
-        db.add(master_user)
-        await db.commit()
-        await db.refresh(master_user)
+    # 1. テスト用初期アカウント2件 (testuser_a, testuser_b) および master の作成
+    test_accounts = [
+        {"username": "testuser_a", "password": "password123", "character_type": "kurage", "points": 250, "energy": 95},
+        {"username": "testuser_b", "password": "password456", "character_type": "jinbei", "points": 180, "energy": 65},
+        {"username": "master", "password": "password123", "character_type": "slime", "points": 230, "energy": 95},
+    ]
+    created_users = {}
+    for acc in test_accounts:
+        res = await db.execute(select(User).where(User.username == acc["username"]))
+        u = res.scalar_one_or_none()
+        if not u:
+            u = User(
+                username=acc["username"],
+                hashed_password=get_password_hash(acc["password"]),
+                character_type=acc["character_type"],
+                points=acc["points"],
+                energy=acc["energy"],
+                last_accessed_at=datetime.now(timezone.utc),
+            )
+            db.add(u)
+            await db.commit()
+            await db.refresh(u)
+        elif not u.character_type:
+            u.character_type = acc["character_type"]
+            await db.commit()
+            await db.refresh(u)
+        created_users[acc["username"]] = u
+
+    master_user = created_users["master"]
+    user_a = created_users["testuser_a"]
+    user_b = created_users["testuser_b"]
 
     # 2. 単語データ（大学入試・共通テスト・TOEIC 2,000語以上）のシード
     from vocab_generator import generate_all_words
@@ -589,22 +606,28 @@ async def seed_initial_data(db: AsyncSession):
     )
     await db.commit()
 
-    # 3. 初期学習履歴がまだ0件の場合は数件登録
-    uw_count_res = await db.execute(
-        select(func.count(UserWord.id)).where(UserWord.user_id == master_user.id)
-    )
-    uw_count = uw_count_res.scalar() or 0
-    if uw_count == 0:
-        first_words_res = await db.execute(select(Word).order_by(Word.id.asc()).limit(8))
-        first_words = first_words_res.scalars().all()
-        for idx, word in enumerate(first_words):
-            uw = UserWord(
-                user_id=master_user.id,
-                word_id=word.id,
-                in_my_book=(idx < 5),
-                last_searched_at=datetime.now(timezone.utc) - timedelta(minutes=idx * 5),
-                correct_count=1 if idx % 2 == 0 else 0,
-                wrong_count=2 if idx % 3 == 0 else 0,
+    # 3. 各テストユーザーの初期学習履歴（個別最適化の分離確認用）
+    async def seed_user_initial_words(target_user: User, offset: int):
+        uw_count_res = await db.execute(
+            select(func.count(UserWord.id)).where(UserWord.user_id == target_user.id)
+        )
+        if (uw_count_res.scalar() or 0) == 0:
+            words_res = await db.execute(
+                select(Word).where(Word.is_custom.is_(False)).order_by(Word.id.asc()).offset(offset).limit(6)
             )
-            db.add(uw)
-        await db.commit()
+            sample_words = words_res.scalars().all()
+            for idx, word in enumerate(sample_words):
+                uw = UserWord(
+                    user_id=target_user.id,
+                    word_id=word.id,
+                    in_my_book=(idx < 4),
+                    last_searched_at=datetime.now(timezone.utc) - timedelta(minutes=idx * 5),
+                    correct_count=1 if idx % 2 == 0 else 0,
+                    wrong_count=2 if idx % 3 == 0 else 0,
+                )
+                db.add(uw)
+            await db.commit()
+
+    await seed_user_initial_words(user_a, offset=0)   # testuser_a: book, run, light 等
+    await seed_user_initial_words(user_b, offset=30)  # testuser_b: address, contract, charge 等
+    await seed_user_initial_words(master_user, offset=0)

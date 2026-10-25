@@ -23,6 +23,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
+    character_type = Column(String(30), nullable=True, default=None)
     points = Column(Integer, default=230, nullable=False)
     energy = Column(Integer, default=95, nullable=False)
     last_accessed_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)

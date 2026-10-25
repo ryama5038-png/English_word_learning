@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import bcrypt
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, Request, Response
+from fastapi import Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -14,6 +14,9 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY", "cyber_pet_vocab_super_secret_key_2026"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 COOKIE_NAME = "pet_vocab_token"
+
+# 1時間につき -5% エネルギー減衰（12分 = 720秒ごとに -1%）
+DECAY_RATE_PER_HOUR = 5
 
 
 def get_password_hash(password: str) -> str:
@@ -45,7 +48,7 @@ def set_auth_cookie(response: Response, token: str):
         httponly=True,
         max_age=ACCESS_TOKEN_EXPIRE_DAYS * 24 * 3600,
         samesite="lax",
-        secure=False,  # Works over both localhost HTTP and Cloud Shell proxy
+        secure=False,
         path="/",
     )
 
@@ -65,22 +68,25 @@ def get_energy_status_label(energy: int) -> str:
 
 async def apply_energy_decay(user: User, db: AsyncSession) -> int:
     """
-    最終アクセス日時からの経過時間に応じてエネルギーを減衰させる (0〜100%)
-    30分経過につき1%減衰
+    最終アクセス日時 (last_accessed_at) からの経過時間に応じてエネルギーを減衰させ、
+    最新の energy と last_accessed_at をDBに永続化する。
+    減衰率: 1時間につき -5% (0%未満にはならない)
     """
     now = datetime.now(timezone.utc)
     last_access = user.last_accessed_at
     if last_access is None:
         user.last_accessed_at = now
         await db.commit()
+        await db.refresh(user)
         return 0
 
     if last_access.tzinfo is None:
         last_access = last_access.replace(tzinfo=timezone.utc)
 
-    elapsed_seconds = (now - last_access).total_seconds()
-    # 30分 (1800秒) ごとに 1% 減衰
-    decay = int(elapsed_seconds // 1800)
+    elapsed_seconds = max(0.0, (now - last_access).total_seconds())
+    # 1時間(3600秒)あたり 5% 減衰（720秒 = 12分ごとに 1% 減衰）
+    decay = int((elapsed_seconds / 3600.0) * DECAY_RATE_PER_HOUR)
+
     decayed_amount = 0
     if decay > 0:
         old_energy = user.energy
@@ -89,7 +95,8 @@ async def apply_energy_decay(user: User, db: AsyncSession) -> int:
         user.last_accessed_at = now
         await db.commit()
         await db.refresh(user)
-    elif elapsed_seconds > 60:
+    elif elapsed_seconds >= 60:
+        # 1分以上経過していれば最終アクセス時刻を更新してDBに保存
         user.last_accessed_at = now
         await db.commit()
         await db.refresh(user)
@@ -101,39 +108,42 @@ async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    """
+    HttpOnly Cookie（またはAuthorizationヘッダー）からJWTを検証し、
+    現在ログイン中のユーザー(User)を返す。
+    未ログインまたは無効なトークンの場合は 401 Unauthorized を送出する。
+    """
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ", 1)[1]
 
-    user = None
-    if token:
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            user_id_str = payload.get("sub")
-            if user_id_str:
-                result = await db.execute(
-                    select(User).where(User.id == int(user_id_str))
-                )
-                user = result.scalar_one_or_none()
-        except (JWTError, ValueError):
-            user = None
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ログインが必要です。Cookieに有効な認証トークンが存在しません。",
+        )
 
-    # 未ログイン時はデフォルトのデモユーザー 'master' にフォールバックし、即座に全機能を利用可能にする
-    if not user:
-        result = await db.execute(select(User).where(User.username == "master"))
-        user = result.scalar_one_or_none()
-        if not user:
-            user = User(
-                username="master",
-                hashed_password=get_password_hash("password123"),
-                points=230,
-                energy=95,
-                last_accessed_at=datetime.now(timezone.utc),
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="無効な認証トークンです。",
             )
-            db.add(user)
-            await db.commit()
-            await db.refresh(user)
+        result = await db.execute(
+            select(User).where(User.id == int(user_id_str))
+        )
+        user = result.scalar_one_or_none()
+    except (JWTError, ValueError):
+        user = None
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ユーザー情報が見つからないか、セッションの有効期限が切れています。",
+        )
 
     return user
