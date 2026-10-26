@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { wordsApi, quizApi, authApi, petApi } from './api';
 import { VocabList, VocabBookModal } from './VocabList';
+import { useSpeech } from './hooks/useSpeech';
 
 export { VocabList, VocabBookModal };
 
@@ -23,6 +24,18 @@ export function WordDictionaryModal({ onClose, onWordSearched }) {
   const [loading, setLoading] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState('');
   const [totalWordsCount, setTotalWordsCount] = useState(0);
+
+  // 音声読み上げカスタムフック (en-US)
+  const { speak, isSupported: isSpeechSupported, speakingText } = useSpeech('en-US');
+
+  const handleSpeakWord = (wordSpell, e) => {
+    if (e) e.stopPropagation();
+    const ok = speak(wordSpell);
+    if (!ok && !isSpeechSupported) {
+      setFeedbackMsg('⚠️ お使いのブラウザは音声読み上げ機能(Web Speech API)に対応していません。');
+      setTimeout(() => setFeedbackMsg(''), 2500);
+    }
+  };
 
   // カスタム単語登録フォームステート
   const [customSpell, setCustomSpell] = useState('');
@@ -386,6 +399,32 @@ export function WordDictionaryModal({ onClose, onWordSearched }) {
                       <span className="text-base sm:text-lg font-black text-white tracking-wide">
                         {w.word_spell}
                       </span>
+                      <button
+                        type="button"
+                        onClick={(e) => handleSpeakWord(w.word_spell, e)}
+                        aria-label={`${w.word_spell} の発音を聴く`}
+                        title={`${w.word_spell} の発音を聴く (en-US)`}
+                        className={`p-2 rounded-xl border transition-all shrink-0 flex items-center justify-center active:scale-95 ${
+                          speakingText === w.word_spell
+                            ? 'bg-cyan-500/30 border-[#00f2fe] text-cyan-300 drop-shadow-[0_0_10px_rgba(0,242,254,0.9)]'
+                            : 'bg-cyan-950/50 hover:bg-cyan-900/70 border-cyan-700/60 hover:border-[#00f2fe] text-cyan-300 hover:text-cyan-400 hover:drop-shadow-[0_0_8px_rgba(0,242,254,0.85)]'
+                        }`}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="w-4 h-4"
+                        >
+                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                        </svg>
+                      </button>
                       <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${lv.color}`}>
                         {lv.label}
                       </span>
@@ -475,6 +514,10 @@ export function QuizModal({ onClose, onQuizComplete }) {
   const [endNumStr, setEndNumStr] = useState('100');
   const [rangeLimitMode, setRangeLimitMode] = useState('random10'); // 'random10' | 'all'
   const [totalWordsCount, setTotalWordsCount] = useState(0);
+
+  // 音声読み上げカスタムフック (en-US) ＆ 問題切替時の自動発音（オートプレイ）設定
+  const { speak, isSupported: isSpeechSupported, speakingText } = useSpeech('en-US');
+  const [autoPlaySpeech, setAutoPlaySpeech] = useState(false);
 
   useEffect(() => {
     wordsApi
@@ -604,6 +647,22 @@ export function QuizModal({ onClose, onQuizComplete }) {
   };
 
   const currentQ = questions[currentIdx];
+
+  // 問題が切り替わった瞬間に自動で発音させるオートプレイ用エフェクト
+  useEffect(() => {
+    if (step === 'playing' && autoPlaySpeech && currentQ?.word_spell) {
+      speak(currentQ.word_spell);
+    }
+  }, [step, currentIdx, currentQ?.word_spell, autoPlaySpeech, speak]);
+
+  const handleSpeakCurrentQuestion = (e) => {
+    if (e) e.stopPropagation();
+    if (!currentQ?.word_spell) return;
+    const ok = speak(currentQ.word_spell);
+    if (!ok && !isSpeechSupported) {
+      setErrorMsg('お使いのブラウザは音声読み上げ機能(Web Speech API)に対応していません。');
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4">
@@ -913,7 +972,7 @@ export function QuizModal({ onClose, onQuizComplete }) {
         {/* Step 2: クイズ回答画面 */}
         {step === 'playing' && currentQ && (
           <div>
-            <div className="flex items-center justify-between text-xs text-cyan-300 mb-3 border-b border-cyan-800/60 pb-2 pr-7">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-cyan-300 mb-3 border-b border-cyan-800/60 pb-2 pr-7">
               <span className="font-bold flex items-center gap-2">
                 <span>
                   Q.{currentIdx + 1} / {questions.length}
@@ -922,14 +981,58 @@ export function QuizModal({ onClose, onQuizComplete }) {
                   No.{currentQ.word_id}
                 </span>
               </span>
-              <span className="text-[11px] text-slate-400">
-                ⭕{currentQ.correct_count} / ❌{currentQ.wrong_count}
-              </span>
+              <div className="flex items-center gap-2">
+                {isSpeechSupported && (
+                  <button
+                    type="button"
+                    onClick={() => setAutoPlaySpeech((prev) => !prev)}
+                    className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold transition-all ${
+                      autoPlaySpeech
+                        ? 'bg-cyan-500/25 border-[#00f2fe] text-[#00f2fe] shadow-[0_0_8px_rgba(0,242,254,0.35)]'
+                        : 'bg-slate-900/80 border-slate-700 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-200'
+                    }`}
+                    title="問題切り替え時の自動音声読み上げ (Auto-Play) ON/OFF"
+                  >
+                    🔊 自動発音: {autoPlaySpeech ? 'ON' : 'OFF'}
+                  </button>
+                )}
+                <span className="text-[11px] text-slate-400">
+                  ⭕{currentQ.correct_count} / ❌{currentQ.wrong_count}
+                </span>
+              </div>
             </div>
 
             <div className="text-center my-3 sm:my-4 p-3.5 sm:p-4 rounded-2xl bg-[#070516] border border-cyan-500/40">
-              <div className="text-xl sm:text-3xl font-black text-white tracking-wider mb-2 break-all">
-                {currentQ.word_spell}
+              <div className="flex items-center justify-center gap-2.5 sm:gap-3 mb-2">
+                <div className="text-xl sm:text-3xl font-black text-white tracking-wider break-all">
+                  {currentQ.word_spell}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSpeakCurrentQuestion}
+                  aria-label={`${currentQ.word_spell} の発音を聴く`}
+                  title={`${currentQ.word_spell} の発音を聴く (en-US)`}
+                  className={`p-2 rounded-xl border transition-all shrink-0 flex items-center justify-center active:scale-95 ${
+                    speakingText === currentQ.word_spell
+                      ? 'bg-cyan-500/30 border-[#00f2fe] text-cyan-300 drop-shadow-[0_0_10px_rgba(0,242,254,0.9)]'
+                      : 'bg-cyan-950/60 hover:bg-cyan-900/80 border-cyan-600/60 hover:border-[#00f2fe] text-cyan-300 hover:text-cyan-400 hover:drop-shadow-[0_0_8px_rgba(0,242,254,0.85)]'
+                  }`}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-5 h-5 sm:w-6 sm:h-6"
+                  >
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                  </svg>
+                </button>
               </div>
               <div className="inline-block px-3 py-1 rounded-full bg-cyan-500/20 border border-[#00f2fe] text-[#00f2fe] text-[11px] sm:text-xs font-black">
                 【{currentQ.pos_label}】としての意味を選べ

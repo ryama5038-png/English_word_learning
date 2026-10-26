@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { wordsApi } from './api';
+import { useSpeech } from './hooks/useSpeech';
 
 const LEVEL_LABELS = {
   basic: {
@@ -77,6 +78,9 @@ export function VocabList({
   const wordItemRefs = useRef({});
   const listContainerRef = useRef(null);
 
+  // 音声読み上げカスタムフック (en-US)
+  const { speak, isSupported: isSpeechSupported, speakingText } = useSpeech('en-US');
+
   const currentPage = Math.floor(offset / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -90,6 +94,15 @@ export function VocabList({
     setTimeout(() => {
       setFeedbackMsg((prev) => (prev === msg ? '' : prev));
     }, 2600);
+  };
+
+  // 英単語の発音を読み上げるハンドラ（マスク中でもイベント伝播を止めて発音のみ再生可能）
+  const handleSpeakWord = (wordSpell, e) => {
+    if (e) e.stopPropagation();
+    const ok = speak(wordSpell);
+    if (!ok && !isSpeechSupported) {
+      showToast('⚠️ お使いのブラウザは音声読み上げ機能(Web Speech API)に対応していません。');
+    }
   };
 
   // マスクモード変更時は個別解除状態をリセット
@@ -509,10 +522,10 @@ export function VocabList({
                     </div>
                   </div>
 
-                  {/* 2段目：英単語スペル（赤シートマスク対応） */}
+                  {/* 2段目：英単語スペル（赤シートマスク対応 ＋ 音声読み上げスピーカーボタン） */}
                   <div
                     onClick={(e) => toggleRevealEn(w.id, e)}
-                    className={`relative px-3 py-1.5 mb-2 rounded-xl transition-all select-none flex items-center justify-between ${
+                    className={`relative px-3 py-1.5 mb-2 rounded-xl transition-all select-none flex items-center justify-between gap-2 ${
                       maskMode === 'hide_en' ? 'cursor-pointer' : ''
                     } ${
                       isEnMasked
@@ -522,28 +535,65 @@ export function VocabList({
                         : 'bg-[#060414]/70 border border-cyan-900/40'
                     }`}
                   >
-                    <span
-                      className={`text-base sm:text-xl font-black tracking-wide break-all transition-all duration-200 ${
-                        isEnMasked
-                          ? 'blur-md opacity-10 text-pink-300 select-none'
-                          : 'text-white'
-                      }`}
-                    >
-                      {w.word_spell}
-                    </span>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span
+                        className={`text-base sm:text-xl font-black tracking-wide break-all transition-all duration-200 ${
+                          isEnMasked
+                            ? 'blur-md opacity-10 text-pink-300 select-none'
+                            : 'text-white'
+                        }`}
+                      >
+                        {w.word_spell}
+                      </span>
 
-                    {isEnMasked ? (
-                      <span className="absolute inset-0 flex items-center justify-center text-[11px] sm:text-xs font-black text-pink-200 tracking-wider pointer-events-none">
+                      {!isEnMasked &&
+                        maskMode === 'hide_en' &&
+                        revealedEnIds[w.id] && (
+                          <span className="text-[10px] text-pink-300/80 font-bold shrink-0">
+                            (タップで隠す)
+                          </span>
+                        )}
+                    </div>
+
+                    {isEnMasked && (
+                      <span className="absolute inset-0 right-11 flex items-center justify-center text-[11px] sm:text-xs font-black text-pink-200 tracking-wider pointer-events-none">
                         🟥 タップして英単語を表示
                       </span>
-                    ) : (
-                      maskMode === 'hide_en' &&
-                      revealedEnIds[w.id] && (
-                        <span className="text-[10px] text-pink-300/80 font-bold shrink-0 ml-2">
-                          (タップで隠す)
-                        </span>
-                      )
                     )}
+
+                    {/* スピーカーアイコン（🔊）SVGボタン：英語マスク中でも押下して発音リスニング可能 */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleSpeakWord(w.word_spell, e)}
+                      aria-label={`${w.word_spell} の発音を聴く`}
+                      title={
+                        isEnMasked
+                          ? '発音だけ聴いて英単語を当てる (en-US)'
+                          : `${w.word_spell} の発音を聴く (en-US)`
+                      }
+                      className={`relative z-10 p-2 rounded-xl border transition-all shrink-0 flex items-center justify-center active:scale-95 ${
+                        speakingText === w.word_spell
+                          ? 'bg-cyan-500/30 border-[#00f2fe] text-cyan-300 drop-shadow-[0_0_10px_rgba(0,242,254,0.9)]'
+                          : isEnMasked
+                          ? 'bg-rose-950/90 hover:bg-cyan-950/90 border-pink-400/70 hover:border-[#00f2fe] text-pink-200 hover:text-cyan-400 hover:drop-shadow-[0_0_8px_rgba(0,242,254,0.85)]'
+                          : 'bg-cyan-950/50 hover:bg-cyan-900/70 border-cyan-700/60 hover:border-[#00f2fe] text-cyan-300 hover:text-cyan-400 hover:drop-shadow-[0_0_8px_rgba(0,242,254,0.85)]'
+                      }`}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="w-4 h-4 sm:w-5 sm:h-5"
+                      >
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                      </svg>
+                    </button>
                   </div>
 
                   {/* 3段目：日本語の意味領域（赤シートマスク対応） */}
