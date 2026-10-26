@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { authApi, petApi } from './api';
-import { WordDictionaryModal, QuizModal, SystemConfigModal } from './VocabModals';
+import { WordDictionaryModal, QuizModal, SystemConfigModal, VocabBookModal } from './VocabModals';
 
 // --- Cyber & Aquarium Glowing Icons ---
 const EnergyHeartIcon = () => (
@@ -625,12 +625,23 @@ export default function Jinbei() {
           </div>
         </div>
 
-        {/* 右上メニュー：単語検索・マイ単語帳 ＆ 単語テスト ＆ 設定ボタン */}
-        <div className="flex items-center space-x-1.5 sm:space-x-3 pointer-events-auto">
+        {/* 右上メニュー：単語検索・単語帳モード ＆ 単語テスト ＆ 設定ボタン（スマホでは2段に綺麗に整列） */}
+        <div className="flex flex-wrap justify-end items-center gap-1.5 sm:gap-2.5 max-w-[180px] sm:max-w-none pointer-events-auto">
+          {/* > Vocab_Book() (単語帳モード・赤シート暗記) ボタン */}
+          <button
+            onClick={() => setModalOpen('book')}
+            className="group relative px-2.5 sm:px-4 md:px-5 py-1.5 sm:py-2.5 md:py-3 glass-card hover:bg-pink-950/40 border-2 border-[#ff007f] rounded-xl sm:rounded-2xl shadow-[0_0_16px_rgba(255,0,127,0.3)] active:scale-95 transition-all flex items-center gap-1 sm:gap-2"
+          >
+            <span className="text-[11px] sm:text-xs md:text-sm font-mono font-black text-[#ff80bf] tracking-wider group-hover:drop-shadow-[0_0_8px_#ff007f]">
+              <span className="hidden sm:inline">&gt; Vocab_Book()</span>
+              <span className="sm:hidden">📕単語帳</span>
+            </span>
+          </button>
+
           {/* > Vocab_Dict() (単語検索＆マイ単語帳) ボタン */}
           <button
             onClick={() => setModalOpen('dict')}
-            className="group relative px-2.5 sm:px-4 md:px-5 py-2 sm:py-2.5 md:py-3 glass-card hover:bg-cyan-950/40 border-2 border-[#00f2fe] rounded-xl sm:rounded-2xl shadow-[0_0_16px_rgba(0,242,254,0.3)] active:scale-95 transition-all flex items-center gap-1 sm:gap-2"
+            className="group relative px-2.5 sm:px-4 md:px-5 py-1.5 sm:py-2.5 md:py-3 glass-card hover:bg-cyan-950/40 border-2 border-[#00f2fe] rounded-xl sm:rounded-2xl shadow-[0_0_16px_rgba(0,242,254,0.3)] active:scale-95 transition-all flex items-center gap-1 sm:gap-2"
           >
             <span className="text-[11px] sm:text-xs md:text-sm font-mono font-black text-[#00f2fe] tracking-wider group-hover:drop-shadow-[0_0_8px_#00f2fe]">
               <span className="hidden sm:inline">&gt; Vocab_Dict()</span>
@@ -641,18 +652,18 @@ export default function Jinbei() {
           {/* > Execute_Learn() ボタン */}
           <button
             onClick={() => setModalOpen('study')}
-            className="group relative px-2.5 sm:px-5 md:px-6 py-2 sm:py-2.5 md:py-3 glass-card hover:bg-emerald-950/40 border-2 border-[#00ff88] rounded-xl sm:rounded-2xl shadow-[0_0_18px_rgba(0,255,136,0.35)] active:scale-95 transition-all flex items-center gap-1 sm:gap-2"
+            className="group relative px-2.5 sm:px-5 md:px-6 py-1.5 sm:py-2.5 md:py-3 glass-card hover:bg-emerald-950/40 border-2 border-[#00ff88] rounded-xl sm:rounded-2xl shadow-[0_0_18px_rgba(0,255,136,0.35)] active:scale-95 transition-all flex items-center gap-1 sm:gap-2"
           >
             <span className="text-[11px] sm:text-xs md:text-sm font-mono font-black text-[#00ff88] tracking-wider group-hover:drop-shadow-[0_0_8px_#00ff88]">
               <span className="hidden sm:inline">&gt; Execute_Learn()</span>
-              <span className="sm:hidden">&gt; Learn()</span>
+              <span className="sm:hidden">📝テスト</span>
             </span>
           </button>
 
           {/* 設定ボタン */}
           <button
             onClick={() => setModalOpen('settings')}
-            className="p-2 sm:p-2.5 md:p-3 glass-card hover:bg-cyan-950/40 border border-cyan-500/50 hover:border-cyan-400 rounded-xl sm:rounded-2xl shadow-[0_0_12px_rgba(0,242,254,0.2)] active:scale-90 transition-all text-cyan-300"
+            className="p-1.5 sm:p-2.5 md:p-3 glass-card hover:bg-cyan-950/40 border border-cyan-500/50 hover:border-cyan-400 rounded-xl sm:rounded-2xl shadow-[0_0_12px_rgba(0,242,254,0.2)] active:scale-90 transition-all text-cyan-300"
             title="設定"
           >
             <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -773,6 +784,13 @@ export default function Jinbei() {
       {/* ========================================================= */}
       {/* 5. 学習モジュール・設定用 モーダル                         */}
       {/* ========================================================= */}
+      {modalOpen === 'book' && (
+        <VocabBookModal
+          onClose={() => setModalOpen(null)}
+          onWordSearched={handleWordSearched}
+        />
+      )}
+
       {modalOpen === 'dict' && (
         <WordDictionaryModal
           onClose={() => setModalOpen(null)}

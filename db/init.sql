@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS users (
     character_type VARCHAR(30) DEFAULT NULL,
     points INTEGER NOT NULL DEFAULT 230,
     energy INTEGER NOT NULL DEFAULT 95,
-    last_accessed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    last_accessed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_studied_word_id INTEGER DEFAULT NULL,
+    last_studied_offset INTEGER NOT NULL DEFAULT 0
 );
 
 -- 2. 単語辞書テーブル (words)
@@ -35,6 +37,7 @@ CREATE TABLE IF NOT EXISTS user_words (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
     in_my_book BOOLEAN NOT NULL DEFAULT FALSE,
+    is_bookmarked BOOLEAN NOT NULL DEFAULT FALSE,
     last_searched_at TIMESTAMP WITH TIME ZONE,
     correct_count INTEGER NOT NULL DEFAULT 0,
     wrong_count INTEGER NOT NULL DEFAULT 0,
@@ -44,3 +47,4 @@ CREATE TABLE IF NOT EXISTS user_words (
 CREATE INDEX IF NOT EXISTS ix_user_words_user_id ON user_words (user_id);
 CREATE INDEX IF NOT EXISTS ix_user_words_word_id ON user_words (word_id);
 CREATE INDEX IF NOT EXISTS ix_user_words_last_searched_at ON user_words (last_searched_at);
+CREATE INDEX IF NOT EXISTS ix_user_words_is_bookmarked ON user_words (is_bookmarked);

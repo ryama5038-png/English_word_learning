@@ -27,8 +27,10 @@ class User(Base):
     points = Column(Integer, default=230, nullable=False)
     energy = Column(Integer, default=95, nullable=False)
     last_accessed_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    last_studied_word_id = Column(Integer, ForeignKey("words.id", ondelete="SET NULL"), nullable=True, default=None)
+    last_studied_offset = Column(Integer, default=0, nullable=False)
 
-    custom_words = relationship("Word", back_populates="creator")
+    custom_words = relationship("Word", back_populates="creator", foreign_keys="Word.created_by")
     user_words = relationship("UserWord", back_populates="user", cascade="all, delete-orphan")
 
 
@@ -45,7 +47,7 @@ class Word(Base):
     is_custom = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-    creator = relationship("User", back_populates="custom_words")
+    creator = relationship("User", back_populates="custom_words", foreign_keys=[created_by])
     user_words = relationship("UserWord", back_populates="word", cascade="all, delete-orphan")
 
 
@@ -59,6 +61,7 @@ class UserWord(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     word_id = Column(Integer, ForeignKey("words.id", ondelete="CASCADE"), nullable=False, index=True)
     in_my_book = Column(Boolean, default=False, nullable=False)
+    is_bookmarked = Column(Boolean, default=False, nullable=False, index=True)
     last_searched_at = Column(DateTime(timezone=True), nullable=True)
     correct_count = Column(Integer, default=0, nullable=False)
     wrong_count = Column(Integer, default=0, nullable=False)

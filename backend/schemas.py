@@ -30,6 +30,8 @@ class UserResponse(BaseModel):
     last_accessed_at: datetime
     energy_status: str = "元気"  # 元気, 普通, 衰弱
     decayed_amount: int = 0
+    last_studied_word_id: Optional[int] = None
+    last_studied_offset: int = 0
 
 
 # --- Word & UserWord Schemas ---
@@ -57,6 +59,7 @@ class WordOut(BaseModel):
     created_by: Optional[int] = None
     # User-specific learning metadata
     in_my_book: bool = False
+    is_bookmarked: bool = False
     last_searched_at: Optional[datetime] = None
     correct_count: int = 0
     wrong_count: int = 0
@@ -84,6 +87,23 @@ class IdleTalkResponse(BaseModel):
 
 
 # --- Quiz Schemas ---
+class QuizGenerateRequest(BaseModel):
+    """クイズ出題リクエストスキーマ（範囲指定・通常カテゴリ共通）"""
+    mode: str = Field(
+        default="basic",
+        description="出題モード (range, basic, advanced, toeic, recent, my_book, weak)",
+    )
+    start_num: Optional[int] = Field(
+        default=None, ge=1, description="範囲指定モード時の開始番号 (Start ID/Number)"
+    )
+    end_num: Optional[int] = Field(
+        default=None, ge=1, description="範囲指定モード時の終了番号 (End ID/Number)"
+    )
+    limit: Optional[int] = Field(
+        default=None, ge=1, le=200, description="取得問題数（全問出題の場合は null または指定なし）"
+    )
+
+
 class QuizQuestion(BaseModel):
     word_id: int
     word_spell: str

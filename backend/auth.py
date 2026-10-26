@@ -145,5 +145,5 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="ユーザー情報が見つからないか、セッションの有効期限が切れています。",
         )
-
+        
     return user

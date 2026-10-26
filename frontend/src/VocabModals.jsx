@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { wordsApi, quizApi, authApi, petApi } from './api';
+import { VocabList, VocabBookModal } from './VocabList';
+
+export { VocabList, VocabBookModal };
 
 const LEVEL_LABELS = {
   basic: { label: '基礎', color: 'text-emerald-300 border-emerald-500/50 bg-emerald-950/40' },
@@ -12,7 +15,8 @@ const LEVEL_LABELS = {
 // 1. 単語検索 ＆ マイ単語帳 ＆ カスタム単語登録モーダル
 // ============================================================================
 export function WordDictionaryModal({ onClose, onWordSearched }) {
-  const [activeTab, setActiveTab] = useState('search'); // 'search' | 'my_book' | 'recent' | 'custom'
+  const [activeTab, setActiveTab] = useState('search'); // 'search' | 'vocab_book' | 'my_book' | 'recent' | 'custom'
+  const [isBookSettingsOpen, setIsBookSettingsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [levelFilter, setLevelFilter] = useState('all');
   const [words, setWords] = useState([]);
@@ -60,7 +64,7 @@ export function WordDictionaryModal({ onClose, onWordSearched }) {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'custom') {
+    if (activeTab !== 'custom' && activeTab !== 'vocab_book') {
       const timer = setTimeout(() => {
         fetchWordsList(false);
       }, activeTab === 'search' && query ? 220 : 0);
@@ -142,41 +146,59 @@ export function WordDictionaryModal({ onClose, onWordSearched }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4">
-      <div className="glass-card border-2 border-[#00f2fe] rounded-2xl sm:rounded-3xl p-4 sm:p-6 w-full max-w-2xl shadow-[0_0_40px_rgba(0,242,254,0.3)] relative font-mono max-h-[90dvh] flex flex-col text-slate-100">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-1.5 sm:p-4">
+      <div className="glass-card border-2 border-[#00f2fe] rounded-2xl sm:rounded-3xl p-3 sm:p-6 w-full max-w-3xl shadow-[0_0_40px_rgba(0,242,254,0.3)] relative font-mono h-[94dvh] sm:h-[90dvh] flex flex-col text-slate-100 overflow-hidden">
         {/* ヘッダー */}
-        <div className="flex items-center justify-between border-b border-cyan-800/70 pb-3 mb-3 shrink-0">
-          <h3 className="text-base sm:text-xl font-black text-[#00f2fe] flex items-center gap-2 flex-wrap">
+        <div className="flex items-center justify-between gap-2 border-b border-cyan-800/70 pb-2.5 mb-2.5 shrink-0">
+          <h3 className="text-xs sm:text-xl font-black text-[#00f2fe] flex items-center gap-1.5 sm:gap-2 truncate">
             <span>&gt; VOCAB_DATABASE</span>
             <span className="text-[10px] sm:text-xs font-normal text-cyan-300/80 hidden sm:inline">
-              (品詞別辞書・マイ単語帳)
+              (品詞別辞書・単語帳モード・マイ単語帳)
             </span>
             {totalWordsCount > 0 && (
-              <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/50 text-cyan-200 font-bold">
+              <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/50 text-cyan-200 font-bold shrink-0">
                 収録: {totalWordsCount.toLocaleString()}語
               </span>
             )}
           </h3>
-          <button
-            onClick={onClose}
-            className="text-cyan-400 hover:text-white font-black text-xl px-2 transition-colors"
-          >
-            ✕
-          </button>
+
+          {/* 右上アクション領域：単語帳タブ時は✕の左隣に「⚙️ 表示設定」ボタンを配置 */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {activeTab === 'vocab_book' && (
+              <button
+                type="button"
+                onClick={() => setIsBookSettingsOpen((prev) => !prev)}
+                className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-pink-950/80 hover:bg-pink-900 border border-[#ff007f] text-pink-200 hover:text-white shadow-[0_0_12px_rgba(255,0,127,0.35)] active:scale-95 transition-all flex items-center gap-1 text-[11px] sm:text-xs font-black"
+                title="赤シート暗記・フィルター・表示設定を開く"
+              >
+                <span>⚙️</span>
+                <span>表示設定</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-cyan-400 hover:text-white font-black text-lg sm:text-xl px-2 py-0.5 transition-colors"
+              aria-label="閉じる"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
-        {/* タブ切り替え */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 mb-3 shrink-0">
+        {/* タブ切り替え（スマホでも見やすい折り返し＆グリッド） */}
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 sm:gap-2 mb-2.5 shrink-0">
           {[
             { id: 'search', label: '🔍 辞書検索' },
+            { id: 'vocab_book', label: '📕 単語帳' },
             { id: 'my_book', label: '⭐ マイ単語帳' },
-            { id: 'recent', label: '🕒 直近検索(20)' },
+            { id: 'recent', label: '🕒 直近(20)' },
             { id: 'custom', label: '➕ 単語追加' },
           ].map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`py-2 px-2 rounded-xl text-xs font-bold transition-all border ${
+              className={`py-1.5 sm:py-2 px-1.5 sm:px-2 rounded-xl text-[11px] sm:text-xs font-bold transition-all border truncate ${
                 activeTab === t.id
                   ? 'bg-cyan-500/30 border-[#00f2fe] text-white shadow-[0_0_12px_rgba(0,242,254,0.35)]'
                   : 'bg-slate-900/50 border-cyan-900/50 text-cyan-300/70 hover:text-cyan-200'
@@ -194,7 +216,16 @@ export function WordDictionaryModal({ onClose, onWordSearched }) {
           </div>
         )}
 
-        {/* 検索バー（辞書検索タブ時） */}
+        {activeTab === 'vocab_book' ? (
+          <VocabList
+            onWordSearched={onWordSearched}
+            embedded
+            isSettingsOpen={isBookSettingsOpen}
+            onSettingsOpenChange={setIsBookSettingsOpen}
+          />
+        ) : (
+          <>
+            {/* 検索バー（辞書検索タブ時） */}
         {activeTab === 'search' && (
           <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-2 mb-3 shrink-0">
             <div className="flex gap-1.5 flex-1">
@@ -418,16 +449,18 @@ export function WordDictionaryModal({ onClose, onWordSearched }) {
             })
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );
 }
 
 // ============================================================================
-// 2. 単語テスト・弱点克服クイズモーダル
+// 2. 単語テスト・弱点克服・範囲指定クイズモーダル（スマホ・PCレスポンシブ対応）
 // ============================================================================
 export function QuizModal({ onClose, onQuizComplete }) {
-  const [step, setStep] = useState('select'); // 'select' | 'playing' | 'result'
+  const [step, setStep] = useState('select'); // 'select' | 'range_setup' | 'playing' | 'result'
   const [category, setCategory] = useState('basic');
   const [questions, setQuestions] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -436,6 +469,21 @@ export function QuizModal({ onClose, onQuizComplete }) {
   const [resultData, setResultData] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // 範囲指定モード用ステート
+  const [startNumStr, setStartNumStr] = useState('1');
+  const [endNumStr, setEndNumStr] = useState('100');
+  const [rangeLimitMode, setRangeLimitMode] = useState('random10'); // 'random10' | 'all'
+  const [totalWordsCount, setTotalWordsCount] = useState(0);
+
+  useEffect(() => {
+    wordsApi
+      .getStats()
+      .then((s) => {
+        if (s && s.total_words) setTotalWordsCount(s.total_words);
+      })
+      .catch(() => {});
+  }, []);
 
   const startQuiz = async (cat) => {
     setErrorMsg('');
@@ -452,6 +500,71 @@ export function QuizModal({ onClose, onQuizComplete }) {
       setErrorMsg(
         err.response?.data?.detail ||
           '該当する出題範囲に単語がありません。別の範囲を選択してください。'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 数値のみを受け付ける入力ハンドラ
+  const handleNumericInput = (setter) => (e) => {
+    const digitsOnly = e.target.value.replace(/[^0-9]/g, '');
+    setter(digitsOnly);
+    setErrorMsg('');
+  };
+
+  const startNum = startNumStr !== '' ? parseInt(startNumStr, 10) : NaN;
+  const endNum = endNumStr !== '' ? parseInt(endNumStr, 10) : NaN;
+  const isRangeOrderInvalid =
+    !Number.isNaN(startNum) && !Number.isNaN(endNum) && startNum > endNum;
+  const isRangeValid =
+    !Number.isNaN(startNum) &&
+    !Number.isNaN(endNum) &&
+    startNum >= 1 &&
+    endNum >= 1 &&
+    startNum <= endNum;
+
+  const handleStartRangeQuiz = async (e) => {
+    if (e) e.preventDefault();
+    setErrorMsg('');
+
+    if (Number.isNaN(startNum) || Number.isNaN(endNum)) {
+      setErrorMsg('開始番号と終了番号の両方に数値を入力してください。');
+      return;
+    }
+    if (startNum < 1 || endNum < 1) {
+      setErrorMsg('開始番号・終了番号には 1 以上の数値を入力してください。');
+      return;
+    }
+    if (startNum > endNum) {
+      setErrorMsg(
+        '開始番号は終了番号以下の数値を指定してください（開始番号 ≦ 終了番号）。'
+      );
+      return;
+    }
+
+    setLoading(true);
+    setCategory('range');
+    try {
+      const limitVal = rangeLimitMode === 'random10' ? 10 : null;
+      const qs = await quizApi.getRangeQuestions({
+        startNum,
+        endNum,
+        limit: limitVal,
+      });
+      if (!qs || qs.length === 0) {
+        setErrorMsg('指定された範囲に単語が存在しません。');
+        return;
+      }
+      setQuestions(qs);
+      setCurrentIdx(0);
+      setSelectedIdx(null);
+      setAnswers([]);
+      setStep('playing');
+    } catch (err) {
+      setErrorMsg(
+        err.response?.data?.detail ||
+          '指定された範囲に単語が存在しません。番号範囲を確認してください。'
       );
     } finally {
       setLoading(false);
@@ -493,109 +606,337 @@ export function QuizModal({ onClose, onQuizComplete }) {
   const currentQ = questions[currentIdx];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
-      <div className="glass-card border-2 border-[#00ff88] rounded-2xl sm:rounded-3xl p-5 sm:p-7 w-full max-w-lg shadow-[0_0_40px_rgba(0,255,136,0.3)] relative font-mono max-h-[90dvh] overflow-y-auto text-slate-100">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4">
+      <div className="glass-card border-2 border-[#00ff88] rounded-2xl sm:rounded-3xl p-4 sm:p-6 w-full max-w-lg shadow-[0_0_40px_rgba(0,255,136,0.3)] relative font-mono max-h-[92dvh] overflow-y-auto text-slate-100">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-cyan-400 hover:text-white font-black text-xl transition-colors"
+          className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 text-cyan-400 hover:text-white font-black text-xl px-1.5 transition-colors"
         >
           ✕
         </button>
 
+        {/* Step 1: 出題モード選択画面 */}
         {step === 'select' && (
           <div>
-            <h3 className="text-base sm:text-xl font-black text-[#00ff88] mb-1.5 flex items-center gap-2">
+            <h3 className="text-base sm:text-xl font-black text-[#00ff88] mb-1 pr-7 flex items-center gap-2">
               <span>&gt; EXECUTE_WORD_TEST</span>
             </h3>
-            <p className="text-xs text-cyan-200/80 mb-4">
-              品詞ごとの意味を問う4択テストです。正解して生物育成用のポイント(CR)を獲得しましょう！
+            <p className="text-[11px] sm:text-xs text-cyan-200/80 mb-3.5">
+              品詞ごとの意味を問う4択テストです。正解して育成ポイント(CR)を獲得しましょう！
             </p>
 
             {errorMsg && (
-              <div className="mb-3 p-3 rounded-xl bg-rose-950/80 border border-rose-500 text-rose-200 text-xs">
+              <div className="mb-3 p-2.5 rounded-xl bg-rose-950/85 border border-rose-500 text-rose-200 text-xs">
                 ⚠️ {errorMsg}
               </div>
             )}
 
-            <div className="space-y-2.5">
+            <div className="space-y-2">
+              {/* ★ 新規追加：単語帳の範囲指定モード */}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  setErrorMsg('');
+                  setStep('range_setup');
+                }}
+                className="w-full py-3 px-3.5 bg-gradient-to-r from-cyan-950/80 via-indigo-950/80 to-pink-950/80 hover:from-cyan-900/80 hover:to-pink-900/80 border-2 border-[#00f2fe] text-white rounded-xl font-black text-xs sm:text-sm shadow-[0_0_16px_rgba(0,242,254,0.3)] transition-all text-left flex justify-between items-center gap-2"
+              >
+                <div className="min-w-0">
+                  <div className="text-[#00f2fe] flex items-center gap-1.5">
+                    <span>📖 [単語帳の範囲指定]</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-500/30 border border-pink-400 text-pink-200">
+                      NEW
+                    </span>
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] text-cyan-200/80 font-normal mt-0.5 truncate">
+                    開始番号〜終了番号（例: 1〜100）を指定してテスト
+                  </div>
+                </div>
+                <span className="text-[10px] sm:text-[11px] bg-cyan-500/25 border border-cyan-400/50 text-cyan-200 px-2 py-1 rounded-lg shrink-0">
+                  +15 CR/問 &gt;
+                </span>
+              </button>
+
               <button
                 disabled={loading}
                 onClick={() => startQuiz('basic')}
-                className="w-full py-2.5 px-3.5 bg-emerald-950/40 hover:bg-emerald-900/60 border border-[#00ff88] text-[#00ff88] rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center"
+                className="w-full py-2.5 px-3.5 bg-emerald-950/40 hover:bg-emerald-900/60 border border-[#00ff88] text-[#00ff88] rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center gap-2"
               >
-                <span>[基礎] 共通テスト・必須単語</span>
-                <span className="text-[11px] bg-emerald-500/20 px-2 py-0.5 rounded">+10 CR/問</span>
+                <span className="truncate">[基礎] 共通テスト・必須単語</span>
+                <span className="text-[10px] sm:text-[11px] bg-emerald-500/20 px-2 py-0.5 rounded shrink-0">
+                  +10 CR/問
+                </span>
               </button>
 
               <button
                 disabled={loading}
                 onClick={() => startQuiz('advanced')}
-                className="w-full py-2.5 px-3.5 bg-cyan-950/40 hover:bg-cyan-900/60 border border-[#00f2fe] text-[#00f2fe] rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center"
+                className="w-full py-2.5 px-3.5 bg-cyan-950/40 hover:bg-cyan-900/60 border border-[#00f2fe] text-[#00f2fe] rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center gap-2"
               >
-                <span>[応用] 難関大・英検準1級レベル</span>
-                <span className="text-[11px] bg-cyan-500/20 px-2 py-0.5 rounded">+15 CR/問</span>
+                <span className="truncate">[応用] 難関大・英検準1級レベル</span>
+                <span className="text-[10px] sm:text-[11px] bg-cyan-500/20 px-2 py-0.5 rounded shrink-0">
+                  +15 CR/問
+                </span>
               </button>
 
               <button
                 disabled={loading}
                 onClick={() => startQuiz('toeic')}
-                className="w-full py-2.5 px-3.5 bg-amber-950/40 hover:bg-amber-900/60 border border-amber-400 text-amber-300 rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center"
+                className="w-full py-2.5 px-3.5 bg-amber-950/40 hover:bg-amber-900/60 border border-amber-400 text-amber-300 rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center gap-2"
               >
-                <span>[TOEIC] ビジネス頻出語彙</span>
-                <span className="text-[11px] bg-amber-500/20 px-2 py-0.5 rounded">+15 CR/問</span>
+                <span className="truncate">[TOEIC] ビジネス頻出語彙</span>
+                <span className="text-[10px] sm:text-[11px] bg-amber-500/20 px-2 py-0.5 rounded shrink-0">
+                  +15 CR/問
+                </span>
               </button>
 
               <button
                 disabled={loading}
                 onClick={() => startQuiz('recent')}
-                className="w-full py-2.5 px-3.5 bg-purple-950/40 hover:bg-purple-900/60 border border-purple-400 text-purple-300 rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center"
+                className="w-full py-2.5 px-3.5 bg-purple-950/40 hover:bg-purple-900/60 border border-purple-400 text-purple-300 rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center gap-2"
               >
-                <span>🕒 [直近検索] 最近調べた単語から出題</span>
-                <span className="text-[11px] bg-purple-500/20 px-2 py-0.5 rounded">+15 CR/問</span>
+                <span className="truncate">🕒 [直近検索] 最近調べた単語</span>
+                <span className="text-[10px] sm:text-[11px] bg-purple-500/20 px-2 py-0.5 rounded shrink-0">
+                  +15 CR/問
+                </span>
               </button>
 
               <button
                 disabled={loading}
                 onClick={() => startQuiz('my_book')}
-                className="w-full py-2.5 px-3.5 bg-blue-950/40 hover:bg-blue-900/60 border border-blue-400 text-blue-300 rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center"
+                className="w-full py-2.5 px-3.5 bg-blue-950/40 hover:bg-blue-900/60 border border-blue-400 text-blue-300 rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center gap-2"
               >
-                <span>⭐ [マイ単語帳] 登録した単語から出題</span>
-                <span className="text-[11px] bg-blue-500/20 px-2 py-0.5 rounded">+15 CR/問</span>
+                <span className="truncate">⭐ [マイ単語帳] 登録した単語</span>
+                <span className="text-[10px] sm:text-[11px] bg-blue-500/20 px-2 py-0.5 rounded shrink-0">
+                  +15 CR/問
+                </span>
               </button>
 
               <button
                 disabled={loading}
                 onClick={() => startQuiz('weak')}
-                className="w-full py-2.5 px-3.5 bg-pink-950/40 hover:bg-pink-900/60 border border-[#ff007f] text-[#ff80bf] rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center"
+                className="w-full py-2.5 px-3.5 bg-pink-950/40 hover:bg-pink-900/60 border border-[#ff007f] text-[#ff80bf] rounded-xl font-bold text-xs sm:text-sm transition-all text-left flex justify-between items-center gap-2"
               >
-                <span>🔥 [弱点克服] 間違えた単語のみ徹底復習</span>
-                <span className="text-[11px] bg-pink-500/20 px-2 py-0.5 rounded">+20 CR/問</span>
+                <span className="truncate">🔥 [弱点克服] 間違えた単語のみ</span>
+                <span className="text-[10px] sm:text-[11px] bg-pink-500/20 px-2 py-0.5 rounded shrink-0">
+                  +20 CR/問
+                </span>
               </button>
             </div>
           </div>
         )}
 
+        {/* Step 1.5: 単語帳の範囲指定セットアップ画面 */}
+        {step === 'range_setup' && (
+          <form onSubmit={handleStartRangeQuiz} className="space-y-4">
+            <div>
+              <h3 className="text-base sm:text-xl font-black text-[#00f2fe] mb-1 pr-7 flex items-center gap-2">
+                <span>📖 単語帳の範囲指定テスト</span>
+              </h3>
+              <p className="text-[11px] sm:text-xs text-cyan-200/80">
+                単語帳の番号（No.）で出題範囲を指定してテストを開始します。
+                {totalWordsCount > 0 && (
+                  <span className="block sm:inline sm:ml-1 text-[#00ff88] font-bold">
+                    (現在の収録番号: No.1 〜 No.{totalWordsCount})
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="p-3 rounded-xl bg-rose-950/90 border border-rose-500 text-rose-200 text-xs font-bold">
+                ⚠️ {errorMsg}
+              </div>
+            )}
+
+            {/* クイック範囲プリセットボタン（スマホでワンタップ入力可能） */}
+            <div>
+              <label className="block text-[11px] text-cyan-300/90 font-bold mb-1.5">
+                ⚡ クイック範囲選択:
+              </label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { label: '1〜50', s: '1', e: '50' },
+                  { label: '51〜100', s: '51', e: '100' },
+                  { label: '1〜100', s: '1', e: '100' },
+                  { label: '101〜200', s: '101', e: '200' },
+                ].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setStartNumStr(preset.s);
+                      setEndNumStr(preset.e);
+                      setErrorMsg('');
+                    }}
+                    className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-all ${
+                      startNumStr === preset.s && endNumStr === preset.e
+                        ? 'bg-cyan-500/30 border-[#00f2fe] text-white'
+                        : 'bg-slate-900/70 border-cyan-900/60 text-cyan-300/80 hover:text-white'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 開始番号・終了番号入力欄 */}
+            <div className="bg-[#08061a]/90 border border-cyan-500/40 rounded-2xl p-3.5 space-y-3">
+              <div className="grid grid-cols-2 gap-3 items-center">
+                <div>
+                  <label className="block text-[11px] font-bold text-cyan-300 mb-1">
+                    開始番号 (Start No.)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-cyan-400 font-bold">
+                      No.
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={startNumStr}
+                      onChange={handleNumericInput(setStartNumStr)}
+                      placeholder="1"
+                      className="w-full bg-[#0d0a24] border border-cyan-500/60 focus:border-[#00f2fe] rounded-xl pl-9 pr-3 py-2.5 text-sm sm:text-base font-black text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-cyan-300 mb-1">
+                    終了番号 (End No.)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-cyan-400 font-bold">
+                      No.
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={endNumStr}
+                      onChange={handleNumericInput(setEndNumStr)}
+                      placeholder="100"
+                      className="w-full bg-[#0d0a24] border border-cyan-500/60 focus:border-[#00f2fe] rounded-xl pl-9 pr-3 py-2.5 text-sm sm:text-base font-black text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* リアルタイムバリデーション表示 */}
+              {isRangeOrderInvalid ? (
+                <div className="text-[11px] text-rose-400 font-bold">
+                  ⚠️ 開始番号は終了番号以下の数値を入力してください（開始番号 ≦ 終了番号）
+                </div>
+              ) : isRangeValid ? (
+                <div className="text-[11px] text-emerald-300 font-bold flex items-center justify-between">
+                  <span>
+                    ✅ 出題対象: No.{startNum} 〜 No.{endNum}
+                  </span>
+                  <span>（最大 {endNum - startNum + 1} 語の範囲）</span>
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-400">
+                  ※ 1以上の半角数字で開始番号と終了番号を入力してください。
+                </div>
+              )}
+            </div>
+
+            {/* 出題問題数の指定トグル（ランダム10問 or 範囲内全問） */}
+            <div className="bg-[#08061a]/90 border border-cyan-500/40 rounded-2xl p-3.5">
+              <label className="block text-[11px] font-bold text-cyan-300 mb-2">
+                🎯 出題数の設定:
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRangeLimitMode('random10')}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${
+                    rangeLimitMode === 'random10'
+                      ? 'bg-cyan-500/30 border-[#00f2fe] text-white shadow-[0_0_12px_rgba(0,242,254,0.3)]'
+                      : 'bg-slate-900/60 border-slate-700 text-slate-400 hover:text-cyan-200'
+                  }`}
+                >
+                  <span>🎲 ランダムに10問出題</span>
+                  {rangeLimitMode === 'random10' && (
+                    <span className="text-[#00f2fe] font-black">✓</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRangeLimitMode('all')}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${
+                    rangeLimitMode === 'all'
+                      ? 'bg-pink-500/30 border-[#ff007f] text-pink-100 shadow-[0_0_12px_rgba(255,0,127,0.3)]'
+                      : 'bg-slate-900/60 border-slate-700 text-slate-400 hover:text-pink-200'
+                  }`}
+                >
+                  <span>🔥 範囲内を全問出題</span>
+                  {rangeLimitMode === 'all' && (
+                    <span className="text-[#ff80bf] font-black">✓</span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* 戻る ＆ テスト開始ボタン */}
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMsg('');
+                  setStep('select');
+                }}
+                className="px-4 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-cyan-800 text-cyan-300 text-xs font-bold transition-all shrink-0"
+              >
+                ＜ 戻る
+              </button>
+              <button
+                type="submit"
+                disabled={loading || !isRangeValid}
+                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-[#00f2fe] to-[#00ff88] hover:opacity-95 disabled:opacity-40 text-[#050311] font-black text-xs sm:text-sm shadow-[0_0_20px_rgba(0,255,136,0.35)] transition-all"
+              >
+                {loading
+                  ? '問題データを生成中...'
+                  : `🚀 テスト開始 (${
+                      rangeLimitMode === 'random10' ? 'ランダム10問' : '範囲内全問'
+                    })`}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Step 2: クイズ回答画面 */}
         {step === 'playing' && currentQ && (
           <div>
-            <div className="flex items-center justify-between text-xs text-cyan-300 mb-3 border-b border-cyan-800/60 pb-2">
-              <span className="font-bold">
-                QUESTION {currentIdx + 1} / {questions.length}
+            <div className="flex items-center justify-between text-xs text-cyan-300 mb-3 border-b border-cyan-800/60 pb-2 pr-7">
+              <span className="font-bold flex items-center gap-2">
+                <span>
+                  Q.{currentIdx + 1} / {questions.length}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-700/60 text-[10px] text-[#00f2fe]">
+                  No.{currentQ.word_id}
+                </span>
               </span>
               <span className="text-[11px] text-slate-400">
-                履歴: ⭕{currentQ.correct_count} / ❌{currentQ.wrong_count}
+                ⭕{currentQ.correct_count} / ❌{currentQ.wrong_count}
               </span>
             </div>
 
-            <div className="text-center my-4 p-4 rounded-2xl bg-[#070516] border border-cyan-500/40">
-              <div className="text-2xl sm:text-3xl font-black text-white tracking-wider mb-2">
+            <div className="text-center my-3 sm:my-4 p-3.5 sm:p-4 rounded-2xl bg-[#070516] border border-cyan-500/40">
+              <div className="text-xl sm:text-3xl font-black text-white tracking-wider mb-2 break-all">
                 {currentQ.word_spell}
               </div>
-              <div className="inline-block px-3 py-1 rounded-full bg-cyan-500/20 border border-[#00f2fe] text-[#00f2fe] text-xs font-black">
+              <div className="inline-block px-3 py-1 rounded-full bg-cyan-500/20 border border-[#00f2fe] text-[#00f2fe] text-[11px] sm:text-xs font-black">
                 【{currentQ.pos_label}】としての意味を選べ
               </div>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               {currentQ.options.map((opt, idx) => {
                 let btnStyle =
                   'bg-slate-900/70 hover:bg-cyan-950/60 border-cyan-700/60 text-slate-200';
@@ -614,16 +955,16 @@ export function QuizModal({ onClose, onQuizComplete }) {
                     key={idx}
                     onClick={() => handleSelectOption(idx)}
                     disabled={selectedIdx !== null}
-                    className={`w-full py-3 px-4 rounded-xl border text-left text-xs sm:text-sm font-bold transition-all flex items-center justify-between ${btnStyle}`}
+                    className={`w-full py-2.5 sm:py-3 px-3.5 sm:px-4 rounded-xl border text-left text-xs sm:text-sm font-bold transition-all flex items-center justify-between gap-2 ${btnStyle}`}
                   >
-                    <span>
+                    <span className="break-words">
                       {idx + 1}. {opt}
                     </span>
                     {selectedIdx !== null && idx === currentQ.correct_index && (
-                      <span>⭕</span>
+                      <span className="shrink-0">⭕</span>
                     )}
                     {selectedIdx === idx && idx !== currentQ.correct_index && (
-                      <span>❌</span>
+                      <span className="shrink-0">❌</span>
                     )}
                   </button>
                 );
@@ -631,7 +972,7 @@ export function QuizModal({ onClose, onQuizComplete }) {
             </div>
 
             {selectedIdx !== null && (
-              <div className="mt-4 p-3 rounded-xl bg-[#08061c] border border-cyan-500/40 text-xs">
+              <div className="mt-3.5 p-3 rounded-xl bg-[#08061c] border border-cyan-500/40 text-xs">
                 <div className="font-black mb-1">
                   {selectedIdx === currentQ.correct_index ? (
                     <span className="text-[#00ff88]">⭕ 正解！ナイス！</span>
@@ -641,20 +982,23 @@ export function QuizModal({ onClose, onQuizComplete }) {
                     </span>
                   )}
                 </div>
-                <div className="text-cyan-200/80 text-[11px]">
+                <div className="text-cyan-200/80 text-[11px] break-words">
                   全品詞まとめ: {currentQ.all_meanings_summary}
                 </div>
                 <button
                   onClick={handleNext}
                   className="mt-3 w-full py-2.5 bg-[#00ff88] hover:bg-emerald-400 text-[#050311] font-black rounded-xl text-xs sm:text-sm transition-all"
                 >
-                  {currentIdx + 1 < questions.length ? '次の問題へ &gt;' : '結果を見る &gt;'}
+                  {currentIdx + 1 < questions.length
+                    ? '次の問題へ >'
+                    : '結果を見る >'}
                 </button>
               </div>
             )}
           </div>
         )}
 
+        {/* Step 3: テスト結果画面 */}
         {step === 'result' && resultData && (
           <div className="text-center py-4">
             <h3 className="text-xl sm:text-2xl font-black text-[#00ff88] mb-2">
@@ -674,12 +1018,20 @@ export function QuizModal({ onClose, onQuizComplete }) {
               </div>
             </div>
             <p className="text-xs text-cyan-100 mb-5">{resultData.speech}</p>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              {category === 'range' && (
+                <button
+                  onClick={() => setStep('range_setup')}
+                  className="flex-1 py-2.5 bg-pink-950/60 hover:bg-pink-900 border border-[#ff007f] text-pink-200 rounded-xl text-xs font-bold"
+                >
+                  同じ/別の番号範囲で解く
+                </button>
+              )}
               <button
                 onClick={() => setStep('select')}
                 className="flex-1 py-2.5 bg-cyan-950/60 hover:bg-cyan-900 border border-[#00f2fe] text-[#00f2fe] rounded-xl text-xs font-bold"
               >
-                別の範囲を解く
+                モード選択へ
               </button>
               <button
                 onClick={onClose}
