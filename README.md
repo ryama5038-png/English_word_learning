@@ -1,4 +1,4 @@
-ペット育成型個別最適化型サイバー英単語学習帳
+**ペット育成型個別最適化型サイバー英単語学習帳**
 <img width="1118" height="626" alt="スクリーンショット 2026-10-28 033335" src="https://github.com/user-attachments/assets/7520d4d0-ddb6-453c-acda-4b1d7ab485fe" />
 
 > **「単語学習を、義務から愛着へ。」**  
