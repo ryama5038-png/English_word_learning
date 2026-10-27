@@ -48,3 +48,13 @@ CREATE INDEX IF NOT EXISTS ix_user_words_user_id ON user_words (user_id);
 CREATE INDEX IF NOT EXISTS ix_user_words_word_id ON user_words (word_id);
 CREATE INDEX IF NOT EXISTS ix_user_words_last_searched_at ON user_words (last_searched_at);
 CREATE INDEX IF NOT EXISTS ix_user_words_is_bookmarked ON user_words (is_bookmarked);
+
+-- 4. テスト用初期アカウントの挿入 (ユーザー名: ren, パスワード: Tax1729r)
+INSERT INTO users (username, hashed_password, points, energy)
+VALUES (
+    'ren',
+    '$2b$12$siPRUF0lxW5CAsxSx2M1jeHpaUsiC2tHGQSaxfv62o92kgOo4JkAW',
+    230,
+    95
+) ON CONFLICT (username) DO NOTHING;
+

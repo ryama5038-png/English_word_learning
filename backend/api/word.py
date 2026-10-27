@@ -291,6 +291,149 @@ async def search_words_by_spell(
     return [_to_word_response(w, uw) for w, uw in rows]
 
 
+async def fetch_prioritized_review_words(
+    db: AsyncSession,
+    current_user: User,
+    max_total: int = 20,
+) -> List[tuple[Word, Optional[UserWord]]]:
+    """
+    ペットのつぶやき（復習コメント）用に優先順位付きで単語リスト（最大20件）を取得する。
+    - 優先度1（直近のクイズで間違えた単語）: user_words.wrong_count > 0 [最大7件]
+    - 優先度2（最近覚えた / しおり付近の単語）: users.last_studied_word_id 周辺の単語、またはマイ単語帳登録単語 [最大7件]
+    - 優先度3（クイズで正解した単語）: user_words.correct_count > 0 [残りの件数]
+    """
+    prioritized_rows: List[tuple[Word, Optional[UserWord]]] = []
+    seen_word_ids: set[int] = set()
+
+    def _add_rows(rows):
+        for w, uw in rows:
+            if w.id not in seen_word_ids and len(prioritized_rows) < max_total:
+                seen_word_ids.add(w.id)
+                prioritized_rows.append((w, uw))
+
+    # 1. 優先度1: 直近のクイズで間違えた単語 (wrong_count > 0) [最大7件]
+    p1_limit = 7
+    p1_stmt = (
+        select(Word, UserWord)
+        .join(UserWord, UserWord.word_id == Word.id)
+        .where(
+            UserWord.user_id == current_user.id,
+            UserWord.wrong_count > 0,
+        )
+        .order_by(
+            desc(UserWord.wrong_count),
+            desc(UserWord.last_searched_at),
+            desc(UserWord.id),
+        )
+        .limit(p1_limit)
+    )
+    p1_res = await db.execute(p1_stmt)
+    _add_rows(p1_res.all())
+
+    # 2. 優先度2: 最近覚えた / しおり付近の単語 [最大7件]
+    p2_target_count = min(max_total, len(prioritized_rows) + 7)
+
+    # 2-a. しおり位置 (last_studied_word_id) 周辺の単語
+    if current_user.last_studied_word_id is not None:
+        anchor_id = current_user.last_studied_word_id
+        bookmark_stmt = (
+            select(Word, UserWord)
+            .outerjoin(
+                UserWord,
+                (UserWord.word_id == Word.id) & (UserWord.user_id == current_user.id),
+            )
+            .where(
+                or_(Word.is_custom.is_(False), Word.created_by == current_user.id),
+                Word.id >= max(1, anchor_id - 2),
+                Word.id <= anchor_id + 5,
+            )
+            .order_by(Word.id.asc())
+            .limit(5)
+        )
+        if seen_word_ids:
+            bookmark_stmt = bookmark_stmt.where(Word.id.notin_(seen_word_ids))
+        bookmark_res = await db.execute(bookmark_stmt)
+        for w, uw in bookmark_res.all():
+            if w.id not in seen_word_ids and len(prioritized_rows) < p2_target_count:
+                seen_word_ids.add(w.id)
+                prioritized_rows.append((w, uw))
+
+    # 2-b. マイ単語帳に直近で登録された単語
+    p2_remaining = p2_target_count - len(prioritized_rows)
+    if p2_remaining > 0:
+        mybook_stmt = (
+            select(Word, UserWord)
+            .join(UserWord, UserWord.word_id == Word.id)
+            .where(
+                UserWord.user_id == current_user.id,
+                or_(
+                    UserWord.in_my_book.is_(True),
+                    UserWord.is_bookmarked.is_(True),
+                ),
+            )
+            .order_by(
+                desc(UserWord.in_my_book),
+                desc(UserWord.last_searched_at),
+                desc(UserWord.id),
+            )
+            .limit(p2_remaining)
+        )
+        if seen_word_ids:
+            mybook_stmt = mybook_stmt.where(Word.id.notin_(seen_word_ids))
+        mybook_res = await db.execute(mybook_stmt)
+        _add_rows(mybook_res.all())
+
+    # 3. 優先度3: クイズで正解した単語 (correct_count > 0) [残りの件数]
+    p3_remaining = max_total - len(prioritized_rows)
+    if p3_remaining > 0:
+        p3_stmt = (
+            select(Word, UserWord)
+            .join(UserWord, UserWord.word_id == Word.id)
+            .where(
+                UserWord.user_id == current_user.id,
+                UserWord.correct_count > 0,
+            )
+            .order_by(
+                desc(UserWord.last_searched_at),
+                desc(UserWord.correct_count),
+                desc(UserWord.id),
+            )
+            .limit(p3_remaining)
+        )
+        if seen_word_ids:
+            p3_stmt = p3_stmt.where(Word.id.notin_(seen_word_ids))
+        p3_res = await db.execute(p3_stmt)
+        _add_rows(p3_res.all())
+
+    # フォールバック: 学習履歴がまだ存在しない場合は直近検索またはデフォルト単語を取得
+    if not prioritized_rows:
+        recent_stmt = (
+            select(Word, UserWord)
+            .join(UserWord, UserWord.word_id == Word.id)
+            .where(
+                UserWord.user_id == current_user.id,
+                UserWord.last_searched_at.isnot(None),
+            )
+            .order_by(desc(UserWord.last_searched_at))
+            .limit(max_total)
+        )
+        recent_res = await db.execute(recent_stmt)
+        _add_rows(recent_res.all())
+
+    if not prioritized_rows:
+        fallback_stmt = (
+            select(Word)
+            .where(Word.is_custom.is_(False))
+            .order_by(Word.id.asc())
+            .limit(max_total)
+        )
+        fallback_res = await db.execute(fallback_stmt)
+        for w in fallback_res.scalars().all():
+            prioritized_rows.append((w, None))
+
+    return prioritized_rows
+
+
 @router.get("/recent", response_model=List[WordResponse])
 async def get_recent_searched_words(
     db: AsyncSession = Depends(get_db),
@@ -298,21 +441,11 @@ async def get_recent_searched_words(
 ):
     """
     4. GET /api/words/recent
-    ペットのコメント用に、現在ログイン中のユーザーが直近で検索した単語
-    （user_words.last_searched_at 降順）を最大20件取得する。
+    ペットのコメント（復習つぶやき）用に、学習効果が高い優先順位
+    （1: 間違えた単語 → 2: しおり付近/マイ単語帳の単語 → 3: 正解した単語）
+    で結合した単語リスト（最大20件）を返却する。
     """
-    stmt = (
-        select(Word, UserWord)
-        .join(UserWord, UserWord.word_id == Word.id)
-        .where(
-            UserWord.user_id == current_user.id,
-            UserWord.last_searched_at.isnot(None),
-        )
-        .order_by(desc(UserWord.last_searched_at))
-        .limit(20)
-    )
-    res = await db.execute(stmt)
-    rows = res.all()
+    rows = await fetch_prioritized_review_words(db, current_user, max_total=20)
     return [_to_word_response(w, uw) for w, uw in rows]
 
 

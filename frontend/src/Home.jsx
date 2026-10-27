@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { authApi, petApi } from './api';
+import { authApi, petApi, wordsApi } from './api';
 import { WordDictionaryModal, QuizModal, SystemConfigModal, VocabBookModal } from './VocabModals';
 
 // --- Cyberpunk Glowing Icons ---
@@ -212,6 +212,8 @@ export default function Home() {
   const [particles, setParticles] = useState([]);
   const [modalOpen, setModalOpen] = useState(null); // 'dict' | 'study' | 'settings' | null
   const lastWordIdRef = useRef(null);
+  const reviewWordsRef = useRef([]);
+  const reviewIndexRef = useRef(0);
 
   // 初回マウント時：バックエンドからユーザー状態＆エネルギー減衰を取得
   useEffect(() => {
@@ -230,11 +232,75 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // 定期的な無意識復習メッセージ（直近検索した最大20語の品詞別意味＋エネルギー残量に応じた口調変化）
+  // 優先順位付き復習単語リスト（間違えた単語 → しおり付近/マイ単語帳 → 正解した単語）を取得
+  useEffect(() => {
+    if (modalOpen !== null) return;
+    wordsApi
+      .getRecent()
+      .then((list) => {
+        if (Array.isArray(list) && list.length > 0) {
+          reviewWordsRef.current = list;
+          reviewIndexRef.current = 0;
+        }
+      })
+      .catch(() => {});
+  }, [modalOpen]);
+
+  // 定期的な無意識復習メッセージ（APIから受け取った単語リストの配列順にローテーション＋エネルギー残量に応じた口調変化）
   useEffect(() => {
     const timer = setInterval(async () => {
       if (isReacting) return;
       try {
+        if (reviewWordsRef.current.length === 0) {
+          const list = await wordsApi.getRecent();
+          if (Array.isArray(list) && list.length > 0) {
+            reviewWordsRef.current = list;
+            reviewIndexRef.current = 0;
+          }
+        }
+
+        const words = reviewWordsRef.current;
+        if (words.length > 0) {
+          const idx = reviewIndexRef.current % words.length;
+          const targetWord = words[idx];
+          reviewIndexRef.current = (idx + 1) % words.length;
+          lastWordIdRef.current = targetWord.id;
+
+          const posParts = [
+            targetWord.noun_meaning ? `【名】${targetWord.noun_meaning}` : null,
+            targetWord.verb_meaning ? `【動】${targetWord.verb_meaning}` : null,
+            targetWord.adj_meaning ? `【形】${targetWord.adj_meaning}` : null,
+            targetWord.adv_meaning ? `【副】${targetWord.adv_meaning}` : null,
+          ].filter(Boolean);
+          const posSummary = posParts.length > 0 ? posParts.join(' / ') : '意味未登録';
+
+          let templates;
+          if (energy >= 70) {
+            templates = [
+              `「${targetWord.word_spell}」は ${posSummary} って意味だよ！⚡ バッチリ覚えちゃおう♪`,
+              `復習タイム！✨「${targetWord.word_spell}」＝ ${posSummary} だよ！エネルギー満タンで絶好調！`,
+              `ねぇマスター！「${targetWord.word_spell}」の意味、覚えてる？ ${posSummary} だよ♪`,
+              `「${targetWord.word_spell}」(${posSummary})！品詞の違いにも気をつけてね⚡`,
+            ];
+          } else if (energy >= 30) {
+            templates = [
+              `「${targetWord.word_spell}」は ${posSummary} って意味だよ💭 そろそろ少しお腹が空いてきたかも…`,
+              `復習メモ：「${targetWord.word_spell}」＝ ${posSummary} だよ。テストでポイントを稼いでチャージしてね。`,
+              `「${targetWord.word_spell}」の意味は ${posSummary} … もう少しエネルギーがあると嬉しいな⚡`,
+            ];
+          } else {
+            templates = [
+              `うぅ…エネルギー切れそう…💦「${targetWord.word_spell}」は ${posSummary} …はやくCHARGEしてぇ…`,
+              `⚠️ バッテリー低下中…「${targetWord.word_spell}」＝ ${posSummary} …力が…出ないよ…`,
+              `システム衰弱中…💦「${targetWord.word_spell}」(${posSummary})…テストを解いて助けてマスター…`,
+            ];
+          }
+
+          setSpeech(templates[idx % templates.length]);
+          setShowSpeech(true);
+          return;
+        }
+
         const data = await petApi.getIdleTalk(lastWordIdRef.current);
         if (data && data.speech) {
           setSpeech(data.speech);
@@ -253,7 +319,7 @@ export default function Home() {
       }
     }, 7500);
     return () => clearInterval(timer);
-  }, [isReacting]);
+  }, [isReacting, energy]);
 
   // パーティクル生成ヘルパー
   const triggerParticles = () => {

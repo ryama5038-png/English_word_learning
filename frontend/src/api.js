@@ -41,6 +41,7 @@ export const petApi = {
 };
 
 export const wordsApi = {
+  getRecent: () => api.get('/words/recent').then((r) => r.data),
   getStats: () => api.get('/words/stats').then((r) => r.data),
   search: ({
     q = '',

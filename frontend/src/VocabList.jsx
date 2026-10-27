@@ -238,22 +238,36 @@ export function VocabList({
     updater();
   };
 
-  // しおり（進捗位置）を保存する
+  // しおり（進捗位置）を保存／解除（トグル）する
   const handleSaveStudyPosition = async (word, e) => {
     if (e) e.stopPropagation();
+    const isAlreadyStudyPos = studyPos.last_studied_word_id === word.id;
     try {
-      const saved = await wordsApi.saveStudyPosition({
-        lastStudiedWordId: word.id,
-        lastStudiedOffset: offset,
-      });
-      setStudyPos({
-        last_studied_word_id: saved.last_studied_word_id,
-        last_studied_offset: saved.last_studied_offset,
-        last_studied_word_spell: saved.last_studied_word_spell || word.word_spell,
-      });
-      showToast(`🔖 No.${word.id}「${word.word_spell}」にしおりを挟みました！`);
-      if (onWordSearched) {
-        onWordSearched(word);
+      if (isAlreadyStudyPos) {
+        await wordsApi.saveStudyPosition({
+          lastStudiedWordId: null,
+          lastStudiedOffset: 0,
+        });
+        setStudyPos({
+          last_studied_word_id: null,
+          last_studied_offset: 0,
+          last_studied_word_spell: null,
+        });
+        showToast(`「${word.word_spell}」のしおりを外しました。`);
+      } else {
+        const saved = await wordsApi.saveStudyPosition({
+          lastStudiedWordId: word.id,
+          lastStudiedOffset: offset,
+        });
+        setStudyPos({
+          last_studied_word_id: saved.last_studied_word_id,
+          last_studied_offset: saved.last_studied_offset,
+          last_studied_word_spell: saved.last_studied_word_spell || word.word_spell,
+        });
+        showToast(`🔖 No.${word.id}「${word.word_spell}」にしおりを挟みました！`);
+        if (onWordSearched) {
+          onWordSearched(word);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -501,7 +515,7 @@ export function VocabList({
                             ? 'bg-emerald-500/30 border-[#00ff88] text-[#00ff88] shadow-[0_0_8px_rgba(0,255,136,0.35)]'
                             : 'bg-slate-900/80 border-slate-700 text-slate-400 hover:border-[#00ff88]/60 hover:text-emerald-200'
                         }`}
-                        title="ここまで学習した目印として「しおり」を挟む"
+                        title="ここまで学習した目印として「しおり」を挟む / 外す"
                       >
                         <span>🔖</span>
                         <span>{isStudyBookmarkPos ? 'しおり中' : 'しおり'}</span>

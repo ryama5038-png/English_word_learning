@@ -36,7 +36,7 @@ from auth import (
     get_energy_status_label,
 )
 from seed_words import seed_initial_data
-from api.word import router as word_router
+from api.word import router as word_router, fetch_prioritized_review_words
 
 
 @asynccontextmanager
@@ -265,39 +265,15 @@ async def get_pet_idle_talk(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    直近で検索した単語（最大20件）からランダムに選び、
+    優先順位（1: 間違えた単語 → 2: しおり付近/マイ単語帳 → 3: 正解した単語）の配列順に選び、
     ペットの現在のエネルギー残量（元気・普通・衰弱）に応じた口調で呟く
     """
     await apply_energy_decay(current_user, db)
     energy = current_user.energy
     status_label = get_energy_status_label(energy)
 
-    # 直近検索した単語 最大20件を取得
-    stmt = (
-        select(Word, UserWord)
-        .join(UserWord, UserWord.word_id == Word.id)
-        .where(
-            UserWord.user_id == current_user.id,
-            UserWord.last_searched_at.isnot(None),
-        )
-        .order_by(desc(UserWord.last_searched_at))
-        .limit(20)
-    )
-    res = await db.execute(stmt)
-    rows = res.all()
-
+    rows = await fetch_prioritized_review_words(db, current_user, max_total=20)
     words_pool = [r[0] for r in rows]
-
-    # まだ検索履歴がない場合はマイ単語帳または全体の単語から取得
-    if not words_pool:
-        fallback_stmt = select(Word).limit(20)
-        fallback_res = await db.execute(fallback_stmt)
-        words_pool = list(fallback_res.scalars().all())
-
-    if exclude_word_id and len(words_pool) > 1:
-        filtered = [w for w in words_pool if w.id != exclude_word_id]
-        if filtered:
-            words_pool = filtered
 
     if not words_pool:
         return IdleTalkResponse(
@@ -306,7 +282,15 @@ async def get_pet_idle_talk(
             energy_status=status_label,
         )
 
-    target_word = random.choice(words_pool)
+    # 配列の順番通りに次の単語を選択（exclude_word_id の次のインデックスへ進める）
+    target_index = 0
+    if exclude_word_id is not None:
+        for idx, w in enumerate(words_pool):
+            if w.id == exclude_word_id:
+                target_index = (idx + 1) % len(words_pool)
+                break
+
+    target_word = words_pool[target_index]
     pos_summary = build_pos_summary(target_word)
 
     # エネルギー状態（元気 / 普通 / 衰弱）によって口調を変化させる

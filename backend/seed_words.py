@@ -1,6 +1,7 @@
+import hashlib
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, update
 from models import User, Word, UserWord
 from auth import get_password_hash
 
@@ -534,8 +535,9 @@ DEFAULT_WORDS = [
 
 
 async def seed_initial_data(db: AsyncSession):
-    # 1. テスト用初期アカウント2件 (testuser_a, testuser_b) および master の作成
+    # 1. テスト用初期アカウント (ren, testuser_a, testuser_b, master) の作成
     test_accounts = [
+        {"username": "ren", "password": "Tax1729r", "character_type": None, "points": 230, "energy": 95},
         {"username": "testuser_a", "password": "password123", "character_type": "kurage", "points": 250, "energy": 95},
         {"username": "testuser_b", "password": "password456", "character_type": "jinbei", "points": 180, "energy": 65},
         {"username": "master", "password": "password123", "character_type": "slime", "points": 230, "energy": 95},
@@ -556,7 +558,7 @@ async def seed_initial_data(db: AsyncSession):
             db.add(u)
             await db.commit()
             await db.refresh(u)
-        elif not u.character_type:
+        elif not u.character_type and acc["character_type"]:
             u.character_type = acc["character_type"]
             await db.commit()
             await db.refresh(u)
@@ -566,21 +568,202 @@ async def seed_initial_data(db: AsyncSession):
     user_a = created_users["testuser_a"]
     user_b = created_users["testuser_b"]
 
-    # 2. 単語データ（大学入試・共通テスト・TOEIC 2,000語以上）のシード
-    from vocab_generator import generate_all_words
+    # 2. 単語データ（大学入試・共通テスト・TOEIC 2,000語以上）の難易度順・重要語句順シード
+    from vocab_generator import (
+        MULTI_POS_WORDS,
+        VERB_FAMILIES,
+        ADJ_NOUN_FAMILIES,
+        generate_all_words,
+    )
+
+    TIER1_CORE_WORDS = {
+        "provide", "require", "consider", "include", "develop", "produce", "increase", "reduce",
+        "allow", "offer", "suggest", "expect", "decide", "create", "appear", "remain", "reach",
+        "support", "achieve", "improve", "maintain", "recognize", "encourage", "prevent", "protect",
+        "establish", "contribute", "indicate", "influence", "participate", "represent",
+        "accept", "affect", "agree", "apply", "approach", "argue", "arrange", "attend", "attract",
+        "avoid", "believe", "belong", "care", "challenge", "choose", "claim", "collect", "combine",
+        "communicate", "compare", "compete", "complain", "complete", "concentrate", "concern",
+        "conclude", "connect", "construct", "continue", "control", "convince", "deal", "demand",
+        "depend", "describe", "design", "destroy", "determine", "discover", "discuss", "divide",
+        "doubt", "draw", "drive", "earn", "educate", "enable", "encounter", "enjoy", "ensure",
+        "examine", "exist", "expand", "explain", "express", "extend", "face", "fail", "fear",
+        "feature", "feed", "feel", "fight", "figure", "fill", "focus", "follow", "force", "form",
+        "gain", "gather", "govern", "grow", "handle", "happen", "harm", "help", "hide", "hire",
+        "hold", "hope", "hurt", "identify", "ignore", "imagine", "impress", "inform", "insist",
+        "intend", "introduce", "invent", "involve", "judge", "keep", "know", "lack", "lead",
+        "learn", "limit", "link", "live", "lose", "manage", "measure", "mention", "move", "need",
+        "note", "observe", "obtain", "occur", "operate", "organize", "overcome", "pay", "perform",
+        "persuade", "prefer", "prepare", "press", "propose", "prove", "publish", "raise", "react",
+        "realize", "receive", "recommend", "recover", "refer", "reflect", "refuse", "regard",
+        "relate", "release", "relieve", "rely", "remark", "remember", "remind", "remove", "replace",
+        "reply", "report", "resemble", "reserve", "resist", "respect", "respond", "result",
+        "retire", "reveal", "reward", "satisfy", "search", "seek", "select", "separate", "serve",
+        "settle", "solve", "spend", "spread", "stand", "start", "state", "stay", "strengthen",
+        "stress", "struggle", "study", "succeed", "suffer", "summarize", "supply", "suppose",
+        "surprise", "survive", "tend", "threaten", "translate", "transport", "treat", "trust",
+        "turn", "unite", "use", "vary", "view", "visit", "vote", "warn", "wonder", "work", "worry",
+        "environment", "government", "society", "community", "information", "education",
+        "technology", "economy", "culture", "nature", "history", "science", "system", "policy",
+        "population", "situation", "condition", "opportunity", "possibility", "knowledge",
+        "research", "evidence", "effect", "effort", "factor", "issue", "method", "purpose",
+        "quality", "resource", "role", "species", "standard", "strategy", "structure", "theory",
+        "tradition", "trend", "variety", "value", "ability", "access", "advantage", "attitude",
+        "audience", "authority", "average", "balance", "behavior", "benefit", "capacity", "career",
+        "category", "century", "character", "circumstance", "citizen", "climate", "colleague",
+        "company", "competition", "concept", "conclusion", "conflict", "consequence", "consumer",
+        "context", "contrast", "crisis", "custom", "damage", "debate", "decade", "degree",
+        "democracy", "department", "desire", "detail", "device", "difference", "difficulty",
+        "direction", "disaster", "disease", "distance", "district", "duty", "element", "emotion",
+        "energy", "era", "error", "event", "evolution", "example", "exception", "exercise",
+        "existence", "expense", "experience", "expert", "explanation", "expression", "extent",
+        "failure", "faith", "fault", "feeling", "field", "foundation", "freedom", "function",
+        "generation", "goal", "growth", "habit", "health", "honor", "idea", "identity", "image",
+        "impact", "importance", "impression", "income", "industry", "injury", "instance",
+        "institution", "instruction", "instrument", "intelligence", "intention", "interest",
+        "justice", "labor", "language", "law", "leader", "level", "liberty", "literature",
+        "location", "loss", "majority", "manner", "market", "material", "matter", "media",
+        "medicine", "medium", "memory", "mind", "minority", "mission", "model", "moment", "motion",
+        "motive", "movement", "myth", "nation", "necessity", "network", "notice", "notion",
+        "occasion", "operation", "opinion", "option", "order", "origin", "outcome", "pain",
+        "passion", "patient", "pattern", "peace", "performance", "period", "permission", "place",
+        "planet", "pleasure", "point", "politics", "pollution", "position", "poverty", "power",
+        "practice", "pressure", "principle", "privilege", "problem", "procedure", "product",
+        "profession", "profit", "progress", "project", "promise", "property", "proportion",
+        "proposal", "prospect", "protection", "quantity", "range", "rate", "reaction", "reality",
+        "reason", "recognition", "record", "reduction", "reference", "reflection", "region",
+        "relation", "relationship", "religion", "relief", "reputation", "request", "requirement",
+        "responsibility", "rest", "return", "risk", "routine", "rule", "safety", "scene", "score",
+        "season", "section", "security", "selection", "sense", "series", "service", "session",
+        "settlement", "shape", "share", "shift", "shortage", "sight", "sign", "signal", "skill",
+        "solution", "sound", "source", "space", "spirit", "spot", "stage", "statement", "status",
+        "step", "store", "strength", "strike", "style", "substance", "success", "suggestion",
+        "summary", "surface", "survey", "survival", "symbol", "sympathy", "talent", "target",
+        "task", "taste", "tax", "technique", "temperature", "tendency", "tension", "term",
+        "threat", "title", "tool", "topic", "touch", "traffic", "train", "trait", "transition",
+        "transportation", "treatment", "trial", "tribe", "trip", "trouble", "truth", "type",
+        "understanding", "union", "unit", "universe", "version", "victim", "victory", "violence",
+        "virtue", "vision", "voice", "volume", "waste", "wealth", "weapon", "weather", "weight",
+        "welfare", "wildlife", "will", "wind", "wisdom", "witness", "youth",
+        "available", "important", "necessary", "different", "possible", "various", "similar",
+        "common", "certain", "general", "special", "local", "modern", "natural", "public",
+        "social", "human", "likely", "active", "accurate", "anxious", "appropriate", "artificial",
+        "aware", "basic", "brief", "broad", "capable", "careful", "central", "cheap", "chemical",
+        "civil", "classic", "clever", "clear", "close", "comfortable", "complex", "confident",
+        "constant", "convenient", "curious", "current", "detailed", "direct", "domestic",
+        "dramatic", "due", "eager", "easy", "effective", "efficient", "electric", "emotional",
+        "empty", "enormous", "entire", "environmental", "equal", "essential", "evident", "exact",
+        "extreme", "fair", "familiar", "famous", "fast", "female", "final", "financial", "fine",
+        "firm", "fit", "flat", "foreign", "formal", "former", "free", "frequent", "fresh",
+        "friendly", "full", "global", "gradual", "grateful", "guilty", "hard", "healthy", "heavy",
+        "helpful", "high", "historical", "honest", "huge", "ideal", "illegal", "immediate",
+        "impossible", "independent", "individual", "industrial", "initial", "innocent",
+        "intellectual", "intelligent", "international", "kind", "large", "last", "late", "legal",
+        "light", "little", "lonely", "long", "loose", "low", "lucky", "main", "major", "male",
+        "mean", "medical", "mental", "military", "minor", "moral", "narrow", "national", "native",
+        "near", "negative", "nervous", "normal", "nuclear", "obvious", "official", "ordinary",
+        "original", "particular", "peaceful", "personal", "physical", "plain", "pleasant",
+        "polite", "political", "popular", "positive", "potential", "powerful", "practical",
+        "present", "previous", "primary", "private", "probable", "professional", "proper", "proud",
+        "pure", "quick", "quiet", "rapid", "rare", "ready", "real", "reasonable", "recent",
+        "regular", "relative", "relevant", "reliable", "religious", "remote", "responsible",
+        "rich", "right", "rough", "royal", "rude", "rural", "safe", "scientific", "second",
+        "secret", "senior", "sensitive", "serious", "severe", "sharp", "short", "silent",
+        "simple", "single", "slow", "small", "smart", "smooth", "solid", "specific", "square",
+        "steady", "still", "strange", "strict", "strong", "sudden", "suitable", "sure", "sweet",
+        "tall", "terrible", "thick", "thin", "tight", "tiny", "total", "tough", "traditional",
+        "true", "typical", "unique", "universal", "useful", "usual", "valuable", "vast", "visual",
+        "voluntary", "warm", "weak", "wealthy", "well", "wide", "wild", "willing", "wise",
+        "wonderful", "worth", "wrong", "young",
+    }
+
+    default_set = {w["word_spell"].strip().lower() for w in DEFAULT_WORDS}
+    multi_set = {w[0].strip().lower() for w in MULTI_POS_WORDS}
+    root_verbs = {w[0].strip().lower() for w in VERB_FAMILIES}
+    root_adjs = {w[0].strip().lower() for w in ADJ_NOUN_FAMILIES}
+    deriv_advs = (
+        {w[3].strip().lower() for w in VERB_FAMILIES if w[3].strip().lower().endswith("ly")}
+        | {w[1].strip().lower() for w in ADJ_NOUN_FAMILIES if w[1].strip().lower().endswith("ly")}
+    )
+    level_order = {"basic": 1, "advanced": 2, "toeic": 3, "custom": 4}
+    deriv_suffixes = (
+        "tion", "sion", "ment", "ness", "ity", "ance", "ence",
+        "able", "ible", "ive", "ous", "ful", "less", "ship", "hood", "ism", "ist",
+    )
+
+    def difficulty_sort_key(w: dict):
+        s = w["word_spell"].strip().lower()
+        lv = level_order.get(w["level"], 9)
+        pos_count = sum(
+            1 for k in ("noun_meaning", "verb_meaning", "adj_meaning", "adv_meaning") if w.get(k)
+        )
+        h = int(hashlib.md5((s + "_vocab_book_v4").encode("utf-8")).hexdigest()[:8], 16)
+
+        if s in default_set or (s in multi_set and pos_count >= 2):
+            tier = 1
+            sub_band = 1 if s in default_set else 2
+        elif s in TIER1_CORE_WORDS:
+            tier = 1
+            sub_band = 3
+        elif s in root_verbs or s in root_adjs:
+            tier = 2
+            sub_band = 1 if len(s) <= 7 else 2
+        elif s in deriv_advs or (s.endswith("ly") and len(s) > 5):
+            tier = 5
+            sub_band = 2
+        elif s.startswith(("un", "in", "im", "ir", "dis", "mis", "non")) and len(s) > 6:
+            tier = 5
+            sub_band = 1
+        elif s.endswith(deriv_suffixes) and len(s) > 7:
+            tier = 4
+            sub_band = 2
+        else:
+            if len(s) <= 6:
+                tier = 3
+                sub_band = 1
+            elif len(s) <= 8:
+                tier = 3
+                sub_band = 2
+            else:
+                tier = 4
+                sub_band = 1
+
+        return (lv, tier, sub_band, h)
+
+    raw_seed_words = list(DEFAULT_WORDS) + generate_all_words()
+    dedup_map = {}
+    for w_data in raw_seed_words:
+        spell_clean = w_data["word_spell"].strip().lower()
+        if not spell_clean:
+            continue
+        if spell_clean not in dedup_map:
+            dedup_map[spell_clean] = {
+                "word_spell": spell_clean,
+                "level": w_data["level"],
+                "noun_meaning": w_data["noun_meaning"],
+                "verb_meaning": w_data["verb_meaning"],
+                "adj_meaning": w_data["adj_meaning"],
+                "adv_meaning": w_data["adv_meaning"],
+            }
+        else:
+            ex = dedup_map[spell_clean]
+            for k in ("noun_meaning", "verb_meaning", "adj_meaning", "adv_meaning"):
+                if w_data.get(k) and not ex.get(k):
+                    ex[k] = w_data[k]
+
+    ordered_seed_words = sorted(dedup_map.values(), key=difficulty_sort_key)
 
     existing_res = await db.execute(select(Word.word_spell))
     existing_spells = {row[0].lower() for row in existing_res.all() if row[0]}
 
-    all_seed_words = list(DEFAULT_WORDS) + generate_all_words()
     new_words = []
-    for w_data in all_seed_words:
-        spell_lower = w_data["word_spell"].strip().lower()
-        if not spell_lower or spell_lower in existing_spells:
+    for w_data in ordered_seed_words:
+        spell_lower = w_data["word_spell"]
+        if spell_lower in existing_spells:
             continue
         existing_spells.add(spell_lower)
         word = Word(
-            word_spell=w_data["word_spell"].strip(),
+            word_spell=spell_lower,
             level=w_data["level"],
             noun_meaning=w_data["noun_meaning"],
             verb_meaning=w_data["verb_meaning"],
@@ -605,6 +788,83 @@ async def seed_initial_data(db: AsyncSession):
         delete(Word).where(Word.id.notin_(select(min_ids_subq.c.min_id)))
     )
     await db.commit()
+
+    # 既存DBのデフォルト単語配列が難易度順（ordered_seed_words）と異なる場合は、
+    # ユーザーの学習記録・マイ単語帳・付箋・しおり位置を完全に保持したまま難易度順へ並び替える
+    current_default_res = await db.execute(
+        select(Word).where(Word.is_custom.is_(False)).order_by(Word.id.asc())
+    )
+    current_default_words = list(current_default_res.scalars().all())
+    current_spells = [w.word_spell.strip().lower() for w in current_default_words]
+    target_spells = [w["word_spell"] for w in ordered_seed_words]
+
+    if len(current_default_words) == len(ordered_seed_words) and current_spells[:50] != target_spells[:50]:
+        id_to_spell = {w.id: w.word_spell.strip().lower() for w in current_default_words}
+
+        # 1) ユーザーのしおり位置 (last_studied_word_id) をスペルで退避
+        all_users_res = await db.execute(select(User))
+        all_users = list(all_users_res.scalars().all())
+        user_study_spell = {}
+        for u_obj in all_users:
+            if u_obj.last_studied_word_id in id_to_spell:
+                user_study_spell[u_obj.id] = id_to_spell[u_obj.last_studied_word_id]
+
+        # 2) UserWord（マイ単語帳・付箋・検索履歴・正誤履歴）をスペルで退避
+        uw_res = await db.execute(select(UserWord))
+        all_uws = list(uw_res.scalars().all())
+        saved_uws = []
+        for uw_obj in all_uws:
+            if uw_obj.word_id in id_to_spell:
+                saved_uws.append({
+                    "user_id": uw_obj.user_id,
+                    "spell": id_to_spell[uw_obj.word_id],
+                    "in_my_book": uw_obj.in_my_book,
+                    "is_bookmarked": uw_obj.is_bookmarked,
+                    "last_searched_at": uw_obj.last_searched_at,
+                    "correct_count": uw_obj.correct_count,
+                    "wrong_count": uw_obj.wrong_count,
+                })
+
+        # 3) 各行のWordデータを難易度順の配列でインプレース更新
+        spell_to_new_id = {}
+        for word_row, target_data in zip(current_default_words, ordered_seed_words):
+            word_row.word_spell = target_data["word_spell"]
+            word_row.level = target_data["level"]
+            word_row.noun_meaning = target_data["noun_meaning"]
+            word_row.verb_meaning = target_data["verb_meaning"]
+            word_row.adj_meaning = target_data["adj_meaning"]
+            word_row.adv_meaning = target_data["adv_meaning"]
+            spell_to_new_id[target_data["word_spell"]] = word_row.id
+
+        await db.commit()
+
+        # 4) 退避した UserWord と last_studied_word_id を新しい単語IDへ再マッピング
+        if saved_uws:
+            default_ids = [w.id for w in current_default_words]
+            await db.execute(delete(UserWord).where(UserWord.word_id.in_(default_ids)))
+            await db.commit()
+            for item in saved_uws:
+                new_wid = spell_to_new_id.get(item["spell"])
+                if new_wid:
+                    db.add(
+                        UserWord(
+                            user_id=item["user_id"],
+                            word_id=new_wid,
+                            in_my_book=item["in_my_book"],
+                            is_bookmarked=item["is_bookmarked"],
+                            last_searched_at=item["last_searched_at"],
+                            correct_count=item["correct_count"],
+                            wrong_count=item["wrong_count"],
+                        )
+                    )
+            await db.commit()
+
+        for u_obj in all_users:
+            if u_obj.id in user_study_spell:
+                new_wid = spell_to_new_id.get(user_study_spell[u_obj.id])
+                if new_wid:
+                    u_obj.last_studied_word_id = new_wid
+        await db.commit()
 
     # 3. 各テストユーザーの初期学習履歴（個別最適化の分離確認用）
     async def seed_user_initial_words(target_user: User, offset: int):
