@@ -6,21 +6,27 @@ import {
   Navigate,
   useNavigate,
 } from 'react-router-dom';
-import Home from './Home';
 import Kurage from './kurage';
 import Jinbei from './jinbei';
+import Mendako from './mendako';
+import SeaSlug from './sea_slug';
 import Login from './Login';
 import CharacterSelect from './CharacterSelect';
 import { authApi } from './api';
 
 const CHARACTER_META = {
-  kurage: { path: '/kurage', label: '🪼 クラゲ', shortIcon: '🪼' },
-  jinbei: { path: '/jinbei', label: '🦈 ジンベイザメ', shortIcon: '🦈' },
-  slime: { path: '/slime', label: '🔮 スライム', shortIcon: '🔮' },
+  jellyfish: { path: '/jellyfish', label: '🪼 クラゲ', shortIcon: '🪼' },
+  whaleshark: { path: '/whaleshark', label: '🦈 ジンベイザメ', shortIcon: '🦈' },
+  mendako: { path: '/mendako', label: '🐙 メンダコ', shortIcon: '🐙' },
+  sea_slug: { path: '/sea_slug', label: '🫧 アオウミウシ', shortIcon: '🫧' },
+  // レガシー互換エイリアス
+  kurage: { path: '/jellyfish', label: '🪼 クラゲ', shortIcon: '🪼' },
+  jinbei: { path: '/whaleshark', label: '🦈 ジンベイザメ', shortIcon: '🦈' },
+  slime: { path: '/mendako', label: '🐙 メンダコ', shortIcon: '🐙' },
 };
 
 export function getCharacterMeta(characterType) {
-  return CHARACTER_META[characterType] || CHARACTER_META.kurage;
+  return CHARACTER_META[characterType] || CHARACTER_META.jellyfish;
 }
 
 function AgentStatusBadge({ authUser, onLogout }) {
@@ -127,35 +133,48 @@ function AuthenticatedRoutes({ authUser, onLogout, onAuthSuccess }) {
       <Routes>
         <Route path="/" element={<Navigate to={assignedPath} replace />} />
         <Route
-          path="/kurage"
+          path="/jellyfish"
           element={
-            authUser.character_type === 'kurage' ? (
+            authUser.character_type === 'jellyfish' || authUser.character_type === 'kurage' ? (
               <Kurage key={authUser.id} />
             ) : (
               <Navigate to={assignedPath} replace />
             )
           }
         />
+        <Route path="/kurage" element={<Navigate to="/jellyfish" replace />} />
         <Route
-          path="/jinbei"
+          path="/whaleshark"
           element={
-            authUser.character_type === 'jinbei' ? (
+            authUser.character_type === 'whaleshark' || authUser.character_type === 'jinbei' ? (
               <Jinbei key={authUser.id} />
             ) : (
               <Navigate to={assignedPath} replace />
             )
           }
         />
+        <Route path="/jinbei" element={<Navigate to="/whaleshark" replace />} />
         <Route
-          path="/slime"
+          path="/mendako"
           element={
-            authUser.character_type === 'slime' ? (
-              <Home key={authUser.id} />
+            authUser.character_type === 'mendako' ? (
+              <Mendako key={authUser.id} />
             ) : (
               <Navigate to={assignedPath} replace />
             )
           }
         />
+        <Route
+          path="/sea_slug"
+          element={
+            authUser.character_type === 'sea_slug' ? (
+              <SeaSlug key={authUser.id} />
+            ) : (
+              <Navigate to={assignedPath} replace />
+            )
+          }
+        />
+        <Route path="/slime" element={<Navigate to="/mendako" replace />} />
         <Route path="*" element={<Navigate to={assignedPath} replace />} />
       </Routes>
     </>

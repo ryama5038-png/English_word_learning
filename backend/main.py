@@ -115,7 +115,18 @@ def build_pos_summary(word: Word) -> str:
 # ==========================================
 # 1. 認証・ユーザー情報 API (/api/auth)
 # ==========================================
-VALID_CHARACTERS = {"kurage", "jinbei", "slime"}
+VALID_CHARACTERS = {"jellyfish", "whaleshark", "mendako", "sea_slug", "kurage", "jinbei"}
+CHARACTER_TYPE_ALIASES = {
+    "kurage": "jellyfish",
+    "jinbei": "whaleshark",
+}
+
+
+def normalize_character_type(char_type: Optional[str]) -> Optional[str]:
+    if not char_type:
+        return None
+    normalized = CHARACTER_TYPE_ALIASES.get(char_type, char_type)
+    return normalized if normalized in {"jellyfish", "whaleshark", "mendako", "sea_slug"} else None
 
 
 @app.post("/api/auth/register", response_model=UserResponse)
@@ -129,11 +140,13 @@ async def register(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="このユーザー名は既に使用されています。")
 
-    char_type = (
-        payload.character_type
-        if payload.character_type in VALID_CHARACTERS
-        else None
-    )
+    if payload.character_type is not None and payload.character_type not in VALID_CHARACTERS:
+        raise HTTPException(
+            status_code=400,
+            detail="無効なキャラクターです。クラゲ(jellyfish)、ジンベイザメ(whaleshark)、メンダコ(mendako)、アオウミウシ(sea_slug)から選択してください。",
+        )
+
+    char_type = normalize_character_type(payload.character_type)
 
     new_user = User(
         username=username,
@@ -174,10 +187,10 @@ async def select_character(
     if payload.character_type not in VALID_CHARACTERS:
         raise HTTPException(
             status_code=400,
-            detail="無効なキャラクターです。クラゲ(kurage)、ジンベイザメ(jinbei)、スライム(slime)から選択してください。",
+            detail="無効なキャラクターです。クラゲ(jellyfish)、ジンベイザメ(whaleshark)、メンダコ(mendako)、アオウミウシ(sea_slug)から選択してください。",
         )
 
-    current_user.character_type = payload.character_type
+    current_user.character_type = normalize_character_type(payload.character_type)
     current_user.last_accessed_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(current_user)

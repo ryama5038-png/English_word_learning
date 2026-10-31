@@ -1239,10 +1239,12 @@ export function SystemConfigModal({ user, onClose, onUserUpdated, onUserChange }
           <div className="flex justify-between items-center">
             <span className="text-slate-400">学習エージェント:</span>
             <span className="font-black text-cyan-200">
-              {user?.character_type === 'jinbei'
+              {user?.character_type === 'whaleshark' || user?.character_type === 'jinbei'
                 ? '🦈 ジンベイザメ'
-                : user?.character_type === 'slime'
-                ? '🔮 スライム'
+                : user?.character_type === 'mendako'
+                ? '🐙 メンダコ'
+                : user?.character_type === 'sea_slug'
+                ? '🫧 アオウミウシ'
                 : '🪼 クラゲ'}
             </span>
           </div>

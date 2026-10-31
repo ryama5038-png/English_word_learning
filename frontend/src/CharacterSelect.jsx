@@ -3,7 +3,7 @@ import { authApi } from './api';
 
 const CHARACTER_OPTIONS = [
   {
-    id: 'kurage',
+    id: 'jellyfish',
     name: 'クラゲ',
     codeName: 'AQUA_JELLY // TYPE-01',
     badge: '🪼 深海癒やし系エージェント',
@@ -17,7 +17,7 @@ const CHARACTER_OPTIONS = [
       '「ふわふわ〜🫧 マスターの単語学習、わたしが優しくサポートするね！一緒に深海アクアリウムで頑張ろう♪」',
   },
   {
-    id: 'jinbei',
+    id: 'whaleshark',
     name: 'ジンベイザメ',
     codeName: 'WHALE_SHARK // TYPE-02',
     badge: '🦈 大海原クルーズ型エージェント',
@@ -31,23 +31,37 @@ const CHARACTER_OPTIONS = [
       '「ぷかぷか〜🦈 たくさんの英単語をどんどん吸収して、マスターと一緒に広い知識の海を泳ぎたいな！」',
   },
   {
-    id: 'slime',
-    name: 'スライム',
-    codeName: 'NEON_CORE_ORB // TYPE-03',
-    badge: '🔮 電脳コア型AIエージェント',
-    environment: 'サイバーメインサーバー室',
+    id: 'mendako',
+    name: 'メンダコ',
+    codeName: 'DEEP_MENDAKO // TYPE-03',
+    badge: '🐙 深海マスコット型エージェント',
+    environment: '深海サイバーアクアリウム',
     accentColor: '#ff007f',
     borderClass: 'border-[#ff007f]',
-    bgGlowClass: 'from-pink-500/25 via-purple-900/20 to-transparent',
+    bgGlowClass: 'from-pink-500/25 via-rose-950/20 to-transparent',
     description:
-      '電脳空間のメインサーバー室で稼働する高感度ホログラム生命体。テンポの良い反復復習と4択テストで、効率重視の語彙力強化をバックアップします。',
+      '丸っこいフォルムに小さな耳（ヒレ）をパタパタ動かす愛嬌たっぷりの深海マスコット。愛らしい仕草と励ましで毎日の学習習慣を楽しく応援します。',
     greeting:
-      '「ピポパッ⚡ アクセス承認！マスターの語彙データベース構築と弱点克服、ぼくに全部まかせてね✨」',
+      '「パタパタ〜🐙 マスター、今日も一緒に英単語を覚えるの？ぼくが耳をいっぱい動かして応援するよ〜！」',
+  },
+  {
+    id: 'sea_slug',
+    name: 'アオウミウシ',
+    codeName: 'CYBER_NUDI // TYPE-04',
+    badge: '🫧 スタイリッシュ型エージェント',
+    environment: '深海サイバーアクアリウム',
+    accentColor: '#00f2fe',
+    borderClass: 'border-cyan-400',
+    bgGlowClass: 'from-cyan-400/25 via-indigo-950/20 to-transparent',
+    description:
+      '鮮やかなサイバーネオンブルーと触角・エラを持つスタイリッシュなウミウシ。優雅な波動遊泳とクールなアドバイスで、難関単語の攻略をスマートに導きます。',
+    greeting:
+      '「ゆらり…🫧 準備は完了しているよ。美しい知識の海を巡りながら、スマートにボキャブラリーを研ぎ澄まそう。」',
   },
 ];
 
 function CharacterPreviewSvg({ type, selected }) {
-  if (type === 'kurage') {
+  if (type === 'jellyfish' || type === 'kurage') {
     return (
       <svg viewBox="0 0 180 180" className="w-28 h-28 sm:w-32 sm:h-32 overflow-visible">
         <defs>
@@ -106,7 +120,7 @@ function CharacterPreviewSvg({ type, selected }) {
     );
   }
 
-  if (type === 'jinbei') {
+  if (type === 'whaleshark' || type === 'jinbei') {
     return (
       <svg viewBox="0 0 240 180" className="w-32 h-28 sm:w-36 sm:h-32 overflow-visible">
         <defs>
@@ -181,58 +195,187 @@ function CharacterPreviewSvg({ type, selected }) {
     );
   }
 
-  // slime
+  if (type === 'mendako') {
+    return (
+      <svg viewBox="0 0 180 180" className="w-28 h-28 sm:w-32 sm:h-32 overflow-visible">
+        <defs>
+          <radialGradient id="selMendakoBodyGrad" cx="38%" cy="30%" r="68%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+            <stop offset="25%" stopColor="#ffcce6" stopOpacity="0.9" />
+            <stop offset="60%" stopColor="#ff007f" stopOpacity="0.75" />
+            <stop offset="100%" stopColor="#59002d" stopOpacity="0.8" />
+          </radialGradient>
+          <linearGradient id="selMendakoEarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+            <stop offset="45%" stopColor="#ff80bf" stopOpacity="0.85" />
+            <stop offset="100%" stopColor="#ff007f" stopOpacity="0.65" />
+          </linearGradient>
+        </defs>
+        {/* オービットリング */}
+        <ellipse
+          cx="90"
+          cy="92"
+          rx="74"
+          ry="22"
+          fill="none"
+          stroke="#ff007f"
+          strokeWidth="1.6"
+          strokeDasharray="4 4"
+          opacity="0.65"
+          transform="rotate(-12 90 92)"
+        />
+        <ellipse
+          cx="90"
+          cy="92"
+          rx="64"
+          ry="18"
+          fill="none"
+          stroke="#00f2fe"
+          strokeWidth="1.2"
+          strokeDasharray="8 6"
+          opacity="0.45"
+          transform="rotate(15 90 92)"
+        />
+        {/* 耳（小さなヒレ） */}
+        <path
+          d="M 64 64 C 46 44, 24 46, 28 65 C 31 77, 50 82, 64 72 Z"
+          fill="url(#selMendakoEarGrad)"
+          stroke="#ffb3d9"
+          strokeWidth="1.8"
+        />
+        <path
+          d="M 116 64 C 134 44, 156 46, 152 65 C 149 77, 130 82, 116 72 Z"
+          fill="url(#selMendakoEarGrad)"
+          stroke="#ffb3d9"
+          strokeWidth="1.8"
+        />
+        {/* メンダコ本体（ぽよんとした円盤状の丸い体＋裾の波型） */}
+        <path
+          d="M 36 96 C 34 54, 146 54, 144 96 C 144 115, 134 122, 125 116 C 117 112, 109 120, 101 116 C 93 112, 85 120, 77 116 C 69 112, 61 120, 53 116 C 44 122, 36 115, 36 96 Z"
+          fill="url(#selMendakoBodyGrad)"
+          stroke="#ff99cc"
+          strokeWidth="2.2"
+        />
+        <ellipse cx="64" cy="72" rx="8" ry="4" fill="#ffffff" opacity="0.75" transform="rotate(-25 64 72)" />
+        {/* 表情 */}
+        {selected ? (
+          <g>
+            <path d="M 66 90 Q 72 82 78 90" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
+            <path d="M 102 90 Q 108 82 114 90" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
+            <path d="M 87 95 Q 90 100 93 95" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" />
+            <ellipse cx="60" cy="95" rx="5" ry="3" fill="#ff007f" opacity="0.9" />
+            <ellipse cx="120" cy="95" rx="5" ry="3" fill="#ff007f" opacity="0.9" />
+          </g>
+        ) : (
+          <g>
+            <circle cx="72" cy="88" r="5" fill="#1b0022" />
+            <circle cx="73.5" cy="86.5" r="2" fill="#ffffff" />
+            <circle cx="108" cy="88" r="5" fill="#1b0022" />
+            <circle cx="109.5" cy="86.5" r="2" fill="#ffffff" />
+            <path d="M 87 94 Q 90 97 93 94" fill="none" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" />
+          </g>
+        )}
+      </svg>
+    );
+  }
+
+  // sea_slug (アオウミウシ)
   return (
     <svg viewBox="0 0 180 180" className="w-28 h-28 sm:w-32 sm:h-32 overflow-visible">
       <defs>
-        <radialGradient id="selSlimeGrad" cx="38%" cy="32%" r="65%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
-          <stop offset="28%" stopColor="#80f7ff" stopOpacity="0.78" />
-          <stop offset="68%" stopColor="#00c8e6" stopOpacity="0.52" />
-          <stop offset="100%" stopColor="#004766" stopOpacity="0.65" />
-        </radialGradient>
+        <linearGradient id="selSlugBodyGrad" x1="15%" y1="15%" x2="85%" y2="85%">
+          <stop offset="0%" stopColor="#e0f2fe" stopOpacity="0.95" />
+          <stop offset="28%" stopColor="#00f2fe" stopOpacity="0.88" />
+          <stop offset="68%" stopColor="#0284c7" stopOpacity="0.78" />
+          <stop offset="100%" stopColor="#1e3a8a" stopOpacity="0.85" />
+        </linearGradient>
+        <linearGradient id="selSlugAccentGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.98" />
+          <stop offset="35%" stopColor="#fde047" stopOpacity="0.95" />
+          <stop offset="80%" stopColor="#f97316" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#ff007f" stopOpacity="0.85" />
+        </linearGradient>
       </defs>
+      {/* オービットリング */}
       <ellipse
         cx="90"
-        cy="90"
-        rx="76"
+        cy="94"
+        rx="78"
         ry="24"
         fill="none"
-        stroke="#ff007f"
+        stroke="#00f2fe"
         strokeWidth="1.6"
-        strokeDasharray="6 4"
-        opacity="0.7"
-        transform="rotate(-18 90 90)"
+        strokeDasharray="4 4"
+        opacity="0.65"
+        transform="rotate(-10 90 94)"
       />
       <ellipse
         cx="90"
-        cy="90"
-        rx="68"
-        ry="20"
+        cy="94"
+        rx="66"
+        ry="18"
         fill="none"
-        stroke="#00f2fe"
-        strokeWidth="1.5"
-        strokeDasharray="3 4"
-        opacity="0.65"
-        transform="rotate(16 90 90)"
+        stroke="#fde047"
+        strokeWidth="1.2"
+        strokeDasharray="8 6"
+        opacity="0.45"
+        transform="rotate(18 90 94)"
       />
-      <circle cx="90" cy="90" r="46" fill="url(#selSlimeGrad)" stroke="#99f6ff" strokeWidth="2.2" />
-      <ellipse cx="74" cy="66" rx="10" ry="6.5" fill="#ffffff" opacity="0.8" transform="rotate(-30 74 66)" />
+      {/* エラ（尾部の花びら状突起） */}
+      <path
+        d="M 124 82 C 121 66, 130 56, 134 68 C 137 54, 146 58, 141 73 C 152 64, 156 75, 142 83 Z"
+        fill="url(#selSlugAccentGrad)"
+        stroke="#fef08a"
+        strokeWidth="1.6"
+      />
+      {/* ウミウシ本体 */}
+      <path
+        d="M 38 100 C 32 82, 50 72, 80 70 C 118 68, 144 82, 142 102 C 140 116, 112 120, 72 118 C 44 116, 40 108, 38 100 Z"
+        fill="url(#selSlugBodyGrad)"
+        stroke="#67e8f9"
+        strokeWidth="2.2"
+      />
+      {/* 黄色・オレンジのフリル境界と斑点 */}
+      <path
+        d="M 44 102 C 54 114, 110 116, 138 100"
+        fill="none"
+        stroke="#fde047"
+        strokeWidth="2"
+        strokeDasharray="4 3"
+        opacity="0.85"
+      />
+      <circle cx="78" cy="86" r="2.2" fill="#fde047" />
+      <circle cx="94" cy="83" r="2.5" fill="#fde047" />
+      <circle cx="110" cy="86" r="2.2" fill="#fde047" />
+      {/* 触角（頭部の2本） */}
+      <path
+        d="M 56 73 C 50 54, 44 42, 50 38 C 56 35, 61 52, 62 70 Z"
+        fill="url(#selSlugAccentGrad)"
+        stroke="#fef08a"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M 70 72 C 68 52, 70 40, 76 37 C 82 35, 83 51, 78 70 Z"
+        fill="url(#selSlugAccentGrad)"
+        stroke="#fef08a"
+        strokeWidth="1.6"
+      />
+      {/* 表情 */}
       {selected ? (
         <g>
-          <path d="M 66 93 Q 73 83 80 93" fill="none" stroke="#00ffff" strokeWidth="3.2" strokeLinecap="round" />
-          <path d="M 100 93 Q 107 83 114 93" fill="none" stroke="#00ffff" strokeWidth="3.2" strokeLinecap="round" />
-          <path d="M 85 98 Q 90 104 95 98" fill="none" stroke="#00ffff" strokeWidth="2.8" strokeLinecap="round" />
-          <ellipse cx="62" cy="99" rx="5" ry="3" fill="#ff007f" opacity="0.85" />
-          <ellipse cx="118" cy="99" rx="5" ry="3" fill="#ff007f" opacity="0.85" />
+          <path d="M 48 87 Q 53 80 58 87" fill="none" stroke="#00ffff" strokeWidth="2.8" strokeLinecap="round" />
+          <path d="M 68 86 Q 73 79 78 86" fill="none" stroke="#00ffff" strokeWidth="2.8" strokeLinecap="round" />
+          <path d="M 57 94 Q 61 98 65 94" fill="none" stroke="#00ffff" strokeWidth="2.2" strokeLinecap="round" />
+          <ellipse cx="45" cy="92" rx="4" ry="2.5" fill="#ff007f" opacity="0.85" />
+          <ellipse cx="80" cy="91" rx="4" ry="2.5" fill="#ff007f" opacity="0.85" />
         </g>
       ) : (
         <g>
-          <rect x="68" y="85" width="9" height="10" rx="2" fill="#00f2fe" />
-          <rect x="70" y="86.5" width="3" height="3" rx="0.8" fill="#ffffff" />
-          <rect x="103" y="85" width="9" height="10" rx="2" fill="#00f2fe" />
-          <rect x="105" y="86.5" width="3" height="3" rx="0.8" fill="#ffffff" />
-          <path d="M 86 99 Q 90 102 94 99" fill="none" stroke="#00e5ff" strokeWidth="2.5" strokeLinecap="round" />
+          <circle cx="53" cy="84" r="3.5" fill="#00f2fe" />
+          <circle cx="54" cy="83" r="1.2" fill="#ffffff" />
+          <circle cx="73" cy="83" r="3.5" fill="#00f2fe" />
+          <circle cx="74" cy="82" r="1.2" fill="#ffffff" />
+          <path d="M 58 92 Q 62 95 66 92" fill="none" stroke="#00e5ff" strokeWidth="2" strokeLinecap="round" />
         </g>
       )}
     </svg>
@@ -240,7 +383,7 @@ function CharacterPreviewSvg({ type, selected }) {
 }
 
 export default function CharacterSelect({ user, onCharacterSelected, onLogout }) {
-  const [selectedId, setSelectedId] = useState('kurage');
+  const [selectedId, setSelectedId] = useState('jellyfish');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -305,7 +448,7 @@ export default function CharacterSelect({ user, onCharacterSelected, onLogout })
       </div>
 
       {/* メインコンテナ */}
-      <div className="relative z-10 w-full max-w-5xl my-auto py-2">
+      <div className="relative z-10 w-full max-w-6xl my-auto py-2">
         {/* ステップインジケーター（新規登録 → キャラクター選択 → サービス開始） */}
         <div className="flex flex-wrap items-center justify-between gap-2 mb-5 glass-select-panel border border-cyan-500/40 rounded-2xl px-4 py-3 shadow-[0_0_25px_rgba(0,242,254,0.18)]">
           <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm font-black">
@@ -344,7 +487,7 @@ export default function CharacterSelect({ user, onCharacterSelected, onLogout })
             &gt; SELECT_YOUR_LEARNING_AGENT()
           </h1>
           <p className="text-xs sm:text-sm text-cyan-100/85 mt-1.5">
-            あなたの英単語学習に伴走するパートナーを <span className="text-[#00ff88] font-bold">クラゲ・ジンベイザメ・スライム</span> の3体から1つ選んでください
+            あなたの英単語学習に伴走するパートナーを <span className="text-[#00ff88] font-bold">クラゲ・ジンベイザメ・メンダコ・アオウミウシ</span> の4体から1つ選んでください
           </p>
         </div>
 
@@ -354,8 +497,8 @@ export default function CharacterSelect({ user, onCharacterSelected, onLogout })
           </div>
         )}
 
-        {/* 3体のキャラクター選択カードグリッド */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {/* 4体のキャラクター選択カードグリッド */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {CHARACTER_OPTIONS.map((char) => {
             const isSelected = selectedId === char.id;
             return (

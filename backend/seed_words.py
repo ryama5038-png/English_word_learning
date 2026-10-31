@@ -535,13 +535,19 @@ DEFAULT_WORDS = [
 
 
 async def seed_initial_data(db: AsyncSession):
-    # 1. テスト用初期アカウント (ren, testuser_a, testuser_b, master) の作成
+    # 1. テスト用初期アカウント (ren, testuser_a, testuser_b, master, testuser_c) の作成
     test_accounts = [
         {"username": "ren", "password": "Tax1729r", "character_type": None, "points": 230, "energy": 95},
-        {"username": "testuser_a", "password": "password123", "character_type": "kurage", "points": 250, "energy": 95},
-        {"username": "testuser_b", "password": "password456", "character_type": "jinbei", "points": 180, "energy": 65},
-        {"username": "master", "password": "password123", "character_type": "slime", "points": 230, "energy": 95},
+        {"username": "testuser_a", "password": "password123", "character_type": "jellyfish", "points": 250, "energy": 95},
+        {"username": "testuser_b", "password": "password456", "character_type": "whaleshark", "points": 180, "energy": 65},
+        {"username": "master", "password": "password123", "character_type": "mendako", "points": 230, "energy": 95},
+        {"username": "testuser_c", "password": "password789", "character_type": "sea_slug", "points": 200, "energy": 90},
     ]
+    legacy_char_map = {
+        "kurage": "jellyfish",
+        "jinbei": "whaleshark",
+        "slime": "mendako",
+    }
     created_users = {}
     for acc in test_accounts:
         res = await db.execute(select(User).where(User.username == acc["username"]))
@@ -558,15 +564,33 @@ async def seed_initial_data(db: AsyncSession):
             db.add(u)
             await db.commit()
             await db.refresh(u)
-        elif not u.character_type and acc["character_type"]:
-            u.character_type = acc["character_type"]
-            await db.commit()
-            await db.refresh(u)
+        else:
+            if not u.character_type and acc["character_type"]:
+                u.character_type = acc["character_type"]
+                await db.commit()
+                await db.refresh(u)
+            elif u.character_type in legacy_char_map:
+                u.character_type = legacy_char_map[u.character_type]
+                await db.commit()
+                await db.refresh(u)
         created_users[acc["username"]] = u
+
+    # 既存ユーザーのレガシー・廃止キャラクタータイプ (slime等) を整合させる
+    await db.execute(
+        update(User).where(User.character_type == "slime").values(character_type="mendako")
+    )
+    await db.execute(
+        update(User).where(User.character_type == "kurage").values(character_type="jellyfish")
+    )
+    await db.execute(
+        update(User).where(User.character_type == "jinbei").values(character_type="whaleshark")
+    )
+    await db.commit()
 
     master_user = created_users["master"]
     user_a = created_users["testuser_a"]
     user_b = created_users["testuser_b"]
+    user_c = created_users["testuser_c"]
 
     # 2. 単語データ（大学入試・共通テスト・TOEIC 2,000語以上）の難易度順・重要語句順シード
     from vocab_generator import (
@@ -891,3 +915,4 @@ async def seed_initial_data(db: AsyncSession):
     await seed_user_initial_words(user_a, offset=0)   # testuser_a: book, run, light 等
     await seed_user_initial_words(user_b, offset=30)  # testuser_b: address, contract, charge 等
     await seed_user_initial_words(master_user, offset=0)
+    await seed_user_initial_words(user_c, offset=15)

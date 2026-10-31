@@ -11,7 +11,7 @@ class UserCreate(BaseModel):
 
 
 class CharacterSelectRequest(BaseModel):
-    character_type: str = Field(..., pattern="^(kurage|jinbei|slime)$")
+    character_type: str = Field(..., pattern="^(jellyfish|whaleshark|mendako|sea_slug|kurage|jinbei)$")
 
 
 class UserLogin(BaseModel):
